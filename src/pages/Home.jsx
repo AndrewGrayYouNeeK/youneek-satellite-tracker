@@ -5,6 +5,7 @@ import StatsBar from '@/components/satellite/StatsBar';
 import ZoomControls from '@/components/satellite/ZoomControls';
 import SatelliteInfoPanel from '@/components/satellite/SatelliteInfoPanel';
 import ARModeButton from '@/components/satellite/ARModeButton';
+import SkyARView from '@/components/ar/SkyARView';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 
