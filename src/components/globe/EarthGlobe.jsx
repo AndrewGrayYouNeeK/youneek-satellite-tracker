@@ -25,6 +25,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
   const rotationRef = useRef({ x: 0.3, y: 0 });
   const targetRotationRef = useRef({ x: 0.3, y: 0 });
   const zoomRef = useRef(2.8);
+  const prevZoomDeltaRef = useRef(0);
 
   const initScene = useCallback(() => {
     if (!containerRef.current) return;
