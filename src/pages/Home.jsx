@@ -96,6 +96,11 @@ export default function Home() {
         satellites={satellites}
         groupColors={groupColors}
         activeGroups={activeGroups}
+        zoomDelta={zoomDelta}
+      />
+      <ZoomControls
+        onZoomIn={() => setZoomDelta(d => d + 1)}
+        onZoomOut={() => setZoomDelta(d => d - 1)}
       />
       <SatellitePanel
         activeGroups={activeGroups}
