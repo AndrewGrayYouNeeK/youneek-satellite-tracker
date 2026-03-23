@@ -317,9 +317,13 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       mouseRef.current.isDragging = false;
     };
     const onMove  = (e) => {
-      if (!mouseRef.current.isDragging) return;
+      if (!mouseRef.current.isDown) return;
       const dx = e.clientX - mouseRef.current.prevX;
       const dy = e.clientY - mouseRef.current.prevY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        mouseRef.current.hasMoved = true;
+        mouseRef.current.isDragging = true;
+      }
       targetRotationRef.current.y += dx * 0.005;
       targetRotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationRef.current.x + dy * 0.005));
       mouseRef.current.prevX = e.clientX;
