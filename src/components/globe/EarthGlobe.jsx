@@ -282,8 +282,40 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     const container = containerRef.current;
     if (!container) return;
 
-    const onDown  = (e) => { mouseRef.current.isDragging = true; mouseRef.current.prevX = e.clientX; mouseRef.current.prevY = e.clientY; };
-    const onUp    = ()  => { mouseRef.current.isDragging = false; };
+    const onDown  = (e) => {
+      mouseRef.current.isDragging = false;
+      mouseRef.current.hasMoved = false;
+      mouseRef.current.prevX = e.clientX;
+      mouseRef.current.prevY = e.clientY;
+      mouseRef.current.isDown = true;
+    };
+    const onUp = (e) => {
+      mouseRef.current.isDown = false;
+      if (!mouseRef.current.hasMoved && onSatelliteClick) {
+        // Raycast to find nearest satellite point
+        const rect = container.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Points.threshold = 0.03;
+        raycaster.setFromCamera({ x, y }, cameraRef.current);
+        const pts = Object.values(satellitePointsRef.current);
+        const intersects = raycaster.intersectObjects(pts);
+        if (intersects.length > 0) {
+          const hit = intersects[0];
+          const hitObj = hit.object;
+          const idx = hit.index;
+          const group = Object.keys(satellitePointsRef.current).find(
+            k => satellitePointsRef.current[k] === hitObj
+          );
+          const satData = satelliteDataRef.current[group]?.[idx];
+          if (satData) onSatelliteClick({ ...satData, group });
+        } else {
+          onSatelliteClick(null);
+        }
+      }
+      mouseRef.current.isDragging = false;
+    };
     const onMove  = (e) => {
       if (!mouseRef.current.isDragging) return;
       const dx = e.clientX - mouseRef.current.prevX;
