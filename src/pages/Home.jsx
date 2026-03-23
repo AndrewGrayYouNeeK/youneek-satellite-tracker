@@ -99,6 +99,7 @@ export default function Home() {
         groupColors={groupColors}
         activeGroups={activeGroups}
         zoomDelta={zoomDelta}
+        onSatelliteClick={setSelectedSat}
       />
       <ZoomControls
         onZoomIn={() => setZoomDelta(d => d + 1)}
