@@ -79,7 +79,41 @@ export default function Home() {
     };
   }, [activeGroups, loadGroup]);
 
-  const handleToggleAR = useCallback(() => setIsAR(v => !v), []);
+  const handleToggleAR = useCallback(() => {
+    if (!isAR) {
+      document.documentElement.requestFullscreen?.();
+      gyroBaseRef.current = null;
+
+      const handleOrientation = (e) => {
+        const beta  = (e.beta  ?? 0) * Math.PI / 180;
+        const gamma = (e.gamma ?? 0) * Math.PI / 180;
+        if (!gyroBaseRef.current) gyroBaseRef.current = { beta, gamma };
+        setGyroRotation({
+          x: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, beta  - gyroBaseRef.current.beta)),
+          y: gamma - gyroBaseRef.current.gamma,
+        });
+      };
+
+      if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') window.addEventListener('deviceorientation', handleOrientation);
+        });
+      } else {
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+      window._arOrientationHandler = handleOrientation;
+      setIsAR(true);
+    } else {
+      document.exitFullscreen?.();
+      if (window._arOrientationHandler) {
+        window.removeEventListener('deviceorientation', window._arOrientationHandler);
+        window._arOrientationHandler = null;
+      }
+      setGyroRotation(null);
+      gyroBaseRef.current = null;
+      setIsAR(false);
+    }
+  }, [isAR]);
 
   const handleToggleGroup = useCallback((groupKey) => {
     setActiveGroups(prev =>
