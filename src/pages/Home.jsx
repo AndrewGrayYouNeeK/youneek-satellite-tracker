@@ -161,9 +161,9 @@ export default function Home() {
         satelliteCounts={satelliteCounts}
         loading={loading}
         totalCount={totalCount}
-      />
-      <SatelliteInfoPanel satellite={selectedSat} onClose={() => setSelectedSat(null)} />
-      <StatsBar totalCount={totalCount} />
+      />}
+      {!isAR && <SatelliteInfoPanel satellite={selectedSat} onClose={() => setSelectedSat(null)} />}
+      {!isAR && <StatsBar totalCount={totalCount} />}
     </div>
   );
 }
