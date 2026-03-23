@@ -98,14 +98,20 @@ export default function Home() {
     .reduce((sum, [, count]) => sum + count, 0);
 
   return (
-    <div className={`fixed inset-0 bg-background overflow-hidden ${isAR ? 'bg-black' : ''}`}>
+    <div className="fixed inset-0 bg-background overflow-hidden">
+      {isAR && (
+        <SkyARView
+          satellites={satellites}
+          groupColors={groupColors}
+          onClose={handleToggleAR}
+        />
+      )}
       <EarthGlobe
         satellites={satellites}
         groupColors={groupColors}
         activeGroups={activeGroups}
         zoomDelta={zoomDelta}
         onSatelliteClick={setSelectedSat}
-        gyroRotation={gyroRotation}
       />
       <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
       {!isAR && <ZoomControls
