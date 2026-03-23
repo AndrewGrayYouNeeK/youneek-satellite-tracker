@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+// satelliteDataRef maps group -> array of sat objects (same order as Points geometry)
 import * as THREE from 'three';
 
 const DEG2RAD = Math.PI / 180;
