@@ -56,43 +56,91 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Earth - dark style
-    const earthGeometry = new THREE.SphereGeometry(1, 64, 64);
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      color: 0x0a1628,
-      emissive: 0x020810,
-      specular: 0x111833,
-      shininess: 15,
+    // Ocean (base sphere - dark blue)
+    const oceanGeometry = new THREE.SphereGeometry(1, 64, 64);
+    const oceanMaterial = new THREE.MeshPhongMaterial({
+      color: 0x040d1a,
+      emissive: 0x010508,
+      specular: 0x0a1833,
+      shininess: 40,
     });
-    const earth = new THREE.Mesh(earthGeometry, earthMaterial);
-    scene.add(earth);
-    earthRef.current = earth;
+    const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
+    scene.add(ocean);
+    earthRef.current = ocean;
 
-    // Grid lines (latitude/longitude)
-    const gridMaterial = new THREE.LineBasicMaterial({ color: 0x1a3355, transparent: true, opacity: 0.3 });
-
-    // Latitude lines
+    // Grid lines (latitude/longitude) - subtle ocean grid
+    const gridMaterial = new THREE.LineBasicMaterial({ color: 0x0a1f3d, transparent: true, opacity: 0.25 });
     for (let lat = -80; lat <= 80; lat += 20) {
       const points = [];
       for (let lng = 0; lng <= 360; lng += 2) {
-        points.push(latLngToVector3(lat, lng - 180, 1.002));
+        points.push(latLngToVector3(lat, lng - 180, 1.001));
       }
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      scene.add(new THREE.Line(geometry, gridMaterial));
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), gridMaterial));
     }
-
-    // Longitude lines
     for (let lng = -180; lng < 180; lng += 30) {
       const points = [];
       for (let lat = -90; lat <= 90; lat += 2) {
-        points.push(latLngToVector3(lat, lng, 1.002));
+        points.push(latLngToVector3(lat, lng, 1.001));
       }
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      scene.add(new THREE.Line(geometry, gridMaterial));
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), gridMaterial));
     }
 
-    // Simplified continent outlines (major coastlines as points)
-    addContinentOutlines(scene);
+    // Load country GeoJSON and render land + borders
+    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
+      .then(r => r.json())
+      .then(geojson => {
+        const landMaterial = new THREE.MeshPhongMaterial({
+          color: 0x0d2137,
+          emissive: 0x050e1a,
+          specular: 0x112244,
+          shininess: 5,
+          side: THREE.FrontSide,
+        });
+        const borderMaterial = new THREE.LineBasicMaterial({
+          color: 0x1e4a7a,
+          transparent: true,
+          opacity: 0.8,
+        });
+        const coastMaterial = new THREE.LineBasicMaterial({
+          color: 0x2a6499,
+          transparent: true,
+          opacity: 0.9,
+        });
+
+        geojson.features.forEach(feature => {
+          const geom = feature.geometry;
+          const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+
+          polys.forEach(poly => {
+            poly.forEach((ring, ringIdx) => {
+              // Draw border lines
+              const pts = ring.map(([lng, lat]) => latLngToVector3(lat, lng, 1.003));
+              const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+              scene.add(new THREE.Line(lineGeo, ringIdx === 0 ? coastMaterial : borderMaterial));
+
+              // Fill land polygon as a flat mesh (simplified fan triangulation)
+              if (ringIdx === 0 && ring.length > 3) {
+                const verts = [];
+                const center = ring.reduce(([ax, ay], [x, y]) => [ax + x / ring.length, ay + y / ring.length], [0, 0]);
+                const cVec = latLngToVector3(center[1], center[0], 1.002);
+                for (let i = 0; i < ring.length - 1; i++) {
+                  const v1 = latLngToVector3(ring[i][1], ring[i][0], 1.002);
+                  const v2 = latLngToVector3(ring[i + 1][1], ring[i + 1][0], 1.002);
+                  verts.push(cVec.x, cVec.y, cVec.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                }
+                const landGeo = new THREE.BufferGeometry();
+                landGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+                landGeo.computeVertexNormals();
+                scene.add(new THREE.Mesh(landGeo, landMaterial));
+              }
+            });
+          });
+        });
+      })
+      .catch(() => {
+        // Fallback to simplified outlines if fetch fails
+        addContinentOutlines(scene);
+      });
 
     // Atmosphere glow
     const atmosphereGeometry = new THREE.SphereGeometry(1.08, 64, 64);
