@@ -5,6 +5,8 @@ import { Satellite, Radio, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { SATELLITE_GROUPS } from '@/lib/satellite-data';
 
 export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteCounts, loading, totalCount }) {
+  const [groupsVisible, setGroupsVisible] = useState(true);
+
   return (
     <div className="absolute top-4 left-4 z-10 w-72 md:w-80">
       {/* Header */}
