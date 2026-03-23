@@ -12,7 +12,7 @@ export default function ARModeButton({ isAR, onToggle }) {
       }`}
     >
       {isAR ? <X className="w-4 h-4" /> : <Glasses className="w-4 h-4" />}
-      <span className="text-xs font-medium">{isAR ? 'Exit AR' : 'AR Mode'}</span>
+      <span className="text-xs font-medium">{isAR ? 'Exit AR' : 'Sky AR'}</span>
     </button>
   );
 }
