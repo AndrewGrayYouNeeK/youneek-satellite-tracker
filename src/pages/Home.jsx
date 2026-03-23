@@ -112,6 +112,7 @@ export default function Home() {
         loading={loading}
         totalCount={totalCount}
       />
+      <SatelliteInfoPanel satellite={selectedSat} onClose={() => setSelectedSat(null)} />
       <StatsBar totalCount={totalCount} />
     </div>
   );
