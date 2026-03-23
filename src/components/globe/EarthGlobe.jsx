@@ -203,6 +203,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       pts.material.dispose();
     });
     satellitePointsRef.current = {};
+    satelliteDataRef.current = {};
 
     const groupedSats = {};
     satellites.forEach(sat => {
