@@ -182,6 +182,14 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
 
   }, []);
 
+  // Handle zoom button presses
+  useEffect(() => {
+    if (zoomDelta !== prevZoomDeltaRef.current) {
+      prevZoomDeltaRef.current = zoomDelta;
+      zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current + (zoomDelta > 0 ? -0.4 : 0.4)));
+    }
+  }, [zoomDelta]);
+
   // Update satellite positions
   useEffect(() => {
     if (!sceneRef.current || !globeGroupRef.current) return;
