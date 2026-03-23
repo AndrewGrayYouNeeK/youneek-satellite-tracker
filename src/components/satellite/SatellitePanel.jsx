@@ -81,6 +81,7 @@ export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteC
             </div>
           );
         })}
+        </div>}
       </div>
     </div>
   );
