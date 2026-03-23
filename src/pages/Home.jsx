@@ -85,12 +85,17 @@ export default function Home() {
       gyroBaseRef.current = null;
 
       const handleOrientation = (e) => {
-        const beta  = (e.beta  ?? 0) * Math.PI / 180;
-        const gamma = (e.gamma ?? 0) * Math.PI / 180;
-        if (!gyroBaseRef.current) gyroBaseRef.current = { beta, gamma };
+        const alpha = (e.alpha ?? 0) * Math.PI / 180; // compass (left/right)
+        const beta  = (e.beta  ?? 0) * Math.PI / 180; // front/back tilt
+        if (!gyroBaseRef.current) gyroBaseRef.current = { alpha, beta };
+        // Map alpha (compass heading) to Y rotation, beta (tilt) to X rotation
+        let dy = alpha - gyroBaseRef.current.alpha;
+        // Handle wrap-around at 0/360
+        if (dy > Math.PI) dy -= 2 * Math.PI;
+        if (dy < -Math.PI) dy += 2 * Math.PI;
         setGyroRotation({
-          x: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, beta  - gyroBaseRef.current.beta)),
-          y: gamma - gyroBaseRef.current.gamma,
+          x: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, (beta - gyroBaseRef.current.beta) * 0.5)),
+          y: dy,
         });
       };
 
