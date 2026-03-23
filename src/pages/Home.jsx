@@ -10,6 +10,7 @@ import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
   const [zoomDelta, setZoomDelta] = useState(0);
+  const [selectedSat, setSelectedSat] = useState(null);
   const [satellites, setSatellites] = useState([]);
   const [satelliteCounts, setSatelliteCounts] = useState({});
   const [loading, setLoading] = useState({});
