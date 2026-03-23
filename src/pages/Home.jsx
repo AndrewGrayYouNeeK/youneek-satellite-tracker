@@ -3,6 +3,7 @@ import EarthGlobe from '@/components/globe/EarthGlobe';
 import SatellitePanel from '@/components/satellite/SatellitePanel';
 import StatsBar from '@/components/satellite/StatsBar';
 import ZoomControls from '@/components/satellite/ZoomControls';
+import SatelliteInfoPanel from '@/components/satellite/SatelliteInfoPanel';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 
