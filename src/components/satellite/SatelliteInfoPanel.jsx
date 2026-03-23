@@ -33,6 +33,15 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
         </button>
       </div>
 
+      {/* Satellite image */}
+      <div className="w-full h-32 overflow-hidden">
+        <img
+          src={GROUP_IMAGES[satellite.group] || GROUP_IMAGES.active}
+          alt={satellite.group}
+          className="w-full h-full object-cover opacity-80"
+        />
+      </div>
+
       {/* Satellite name */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-start gap-2">
