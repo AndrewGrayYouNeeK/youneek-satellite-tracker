@@ -29,10 +29,21 @@ export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteC
       </div>
 
       {/* Groups */}
-      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl p-3 shadow-2xl space-y-1">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium px-1 mb-2">
-          Satellite Groups
-        </p>
+      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden">
+        <button
+          onClick={() => setGroupsVisible(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors"
+        >
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">
+            Satellite Groups
+          </p>
+          {groupsVisible ? (
+            <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          )}
+        </button>
+        {groupsVisible && <div className="px-3 pb-3 space-y-1">
         {Object.entries(SATELLITE_GROUPS).map(([key, group]) => {
           const isActive = activeGroups.includes(key);
           const count = satelliteCounts[key] || 0;
