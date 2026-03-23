@@ -14,7 +14,7 @@ function latLngToVector3(lat, lng, radius) {
   );
 }
 
-export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0 }) {
+export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick }) {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
