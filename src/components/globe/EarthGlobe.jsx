@@ -236,6 +236,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       const pts = new THREE.Points(geo, mat);
       globeGroupRef.current.add(pts);
       satellitePointsRef.current[group] = pts;
+      satelliteDataRef.current[group] = sats; // store parallel data
     });
   }, [satellites, groupColors, activeGroups]);
 
