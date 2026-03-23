@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Satellite, Radio, Loader2 } from 'lucide-react';
+import { Satellite, Radio, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { SATELLITE_GROUPS } from '@/lib/satellite-data';
 
 export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteCounts, loading, totalCount }) {
