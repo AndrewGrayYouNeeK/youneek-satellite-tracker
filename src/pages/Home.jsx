@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import EarthGlobe from '@/components/globe/EarthGlobe';
 import SatellitePanel from '@/components/satellite/SatellitePanel';
 import StatsBar from '@/components/satellite/StatsBar';
+import ZoomControls from '@/components/satellite/ZoomControls';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 
