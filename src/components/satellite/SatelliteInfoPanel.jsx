@@ -1,6 +1,15 @@
 import React from 'react';
-import { X, Satellite, MapPin, ArrowUp, Gauge } from 'lucide-react';
+import { X, Satellite, MapPin, ArrowUp } from 'lucide-react';
 import { SATELLITE_GROUPS } from '@/lib/satellite-data';
+
+const GROUP_IMAGES = {
+  starlink: 'https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=400&q=80',
+  stations: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=400&q=80',
+  active: 'https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?w=400&q=80',
+  gps: 'https://images.unsplash.com/photo-1569230173733-59d5a2a3e3b9?w=400&q=80',
+  weather: 'https://images.unsplash.com/photo-1504608524841-42584120d693?w=400&q=80',
+  science: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=400&q=80',
+};
 
 export default function SatelliteInfoPanel({ satellite, onClose }) {
   if (!satellite) return null;
