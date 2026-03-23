@@ -12,6 +12,9 @@ export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
   const [zoomDelta, setZoomDelta] = useState(0);
   const [selectedSat, setSelectedSat] = useState(null);
+  const [isAR, setIsAR] = useState(false);
+  const [gyroRotation, setGyroRotation] = useState(null);
+  const gyroBaseRef = useRef(null);
   const [satellites, setSatellites] = useState([]);
   const [satelliteCounts, setSatelliteCounts] = useState({});
   const [loading, setLoading] = useState({});
