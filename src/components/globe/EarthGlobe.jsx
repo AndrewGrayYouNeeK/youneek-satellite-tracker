@@ -21,6 +21,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
   const cameraRef = useRef(null);
   const globeGroupRef = useRef(null); // single group that rotates everything
   const satellitePointsRef = useRef({});
+  const satelliteDataRef = useRef({}); // group -> sat array (parallel to Points geometry)
   const animationRef = useRef(null);
   const mouseRef = useRef({ isDragging: false, prevX: 0, prevY: 0 });
   const rotationRef = useRef({ x: 0.3, y: 0 });
