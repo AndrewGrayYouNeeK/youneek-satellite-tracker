@@ -281,8 +281,19 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       mouseRef.current.prevY = e.clientY;
     };
     const onWheel = (e) => { e.preventDefault(); zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current + e.deltaY * 0.002)); };
-    const onTouchStart = (e) => { if (e.touches.length === 1) onDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); };
-    const onTouchMove  = (e) => { if (e.touches.length === 1) onMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); };
+    let lastPinchDist = null;
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) onDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+      if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    };
+    const onTouchMove  = (e) => {
+      if (e.touches.length === 1) onMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+      if (e.touches.length === 2 && lastPinchDist !== null) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current - (dist - lastPinchDist) * 0.01));
+        lastPinchDist = dist;
+      }
+    };
     const onResize = () => {
       if (!rendererRef.current || !cameraRef.current || !containerRef.current) return;
       const w = containerRef.current.clientWidth, h = containerRef.current.clientHeight;
