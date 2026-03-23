@@ -141,19 +141,21 @@ export default function Home() {
     .reduce((sum, [, count]) => sum + count, 0);
 
   return (
-    <div className="fixed inset-0 bg-background overflow-hidden">
+    <div className={`fixed inset-0 bg-background overflow-hidden ${isAR ? 'bg-black' : ''}`}>
       <EarthGlobe
         satellites={satellites}
         groupColors={groupColors}
         activeGroups={activeGroups}
         zoomDelta={zoomDelta}
         onSatelliteClick={setSelectedSat}
+        gyroRotation={gyroRotation}
       />
-      <ZoomControls
+      <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
+      {!isAR && <ZoomControls
         onZoomIn={() => setZoomDelta(d => d + 1)}
         onZoomOut={() => setZoomDelta(d => d - 1)}
-      />
-      <SatellitePanel
+      />}
+      {!isAR && <SatellitePanel
         activeGroups={activeGroups}
         onToggleGroup={handleToggleGroup}
         satelliteCounts={satelliteCounts}
