@@ -247,7 +247,14 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
 
-      if (!mouseRef.current.isDragging) targetRotationRef.current.y += 0.001;
+      if (!mouseRef.current.isDragging) {
+        if (gyroRotation) {
+          targetRotationRef.current.x = gyroRotation.x;
+          targetRotationRef.current.y = gyroRotation.y;
+        } else {
+          targetRotationRef.current.y += 0.001;
+        }
+      }
 
       rotationRef.current.x += (targetRotationRef.current.x - rotationRef.current.x) * 0.05;
       rotationRef.current.y += (targetRotationRef.current.y - rotationRef.current.y) * 0.05;
