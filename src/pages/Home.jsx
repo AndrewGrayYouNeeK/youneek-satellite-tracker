@@ -5,8 +5,12 @@ import StatsBar from '@/components/satellite/StatsBar';
 import ZoomControls from '@/components/satellite/ZoomControls';
 import SatelliteInfoPanel from '@/components/satellite/SatelliteInfoPanel';
 import ARModeButton from '@/components/satellite/ARModeButton';
+import TimeControls from '@/components/satellite/TimeControls';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
+
+const MAX_SATS_PER_GROUP = 5000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
@@ -19,6 +23,12 @@ export default function Home() {
   const [satelliteCounts, setSatelliteCounts] = useState({});
   const [loading, setLoading] = useState({});
   const tleCache = useRef({});
+
+  // Time simulation
+  const [simTime, setSimTime] = useState(Date.now());
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [simSpeed, setSimSpeed] = useState(1);
+  const simRef = useRef({ time: Date.now(), speed: 1, playing: false });
 
   const loadGroup = useCallback(async (groupKey) => {
     if (tleCache.current[groupKey]) return tleCache.current[groupKey];
