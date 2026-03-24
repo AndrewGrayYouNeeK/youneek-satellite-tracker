@@ -174,14 +174,38 @@ export default function Home() {
 
   return (
     <div className={`fixed inset-0 bg-background overflow-hidden ${isAR ? 'bg-black' : ''}`}>
-      <EarthGlobe
-        satellites={satellites}
-        groupColors={groupColors}
-        activeGroups={activeGroups}
-        zoomDelta={zoomDelta}
-        onSatelliteClick={setSelectedSat}
-        gyroRotation={gyroRotation}
-      />
+      {flatEarth ? (
+        <FlatEarthMap
+          satellites={satellites}
+          groupColors={groupColors}
+          activeGroups={activeGroups}
+          zoomDelta={zoomDelta}
+          onSatelliteClick={setSelectedSat}
+        />
+      ) : (
+        <EarthGlobe
+          satellites={satellites}
+          groupColors={groupColors}
+          activeGroups={activeGroups}
+          zoomDelta={zoomDelta}
+          onSatelliteClick={setSelectedSat}
+          gyroRotation={gyroRotation}
+        />
+      )}
+      {/* Flat Earth toggle */}
+      {!isAR && (
+        <button
+          onClick={() => setFlatEarth(f => !f)}
+          className={`absolute top-4 z-20 flex items-center gap-2 px-3 py-2 rounded-xl border backdrop-blur-xl shadow-lg transition-all active:scale-95 text-xs font-medium ${
+            flatEarth
+              ? 'bg-primary/20 border-primary/50 text-primary'
+              : 'bg-card/80 border-border/50 text-foreground hover:bg-secondary/60'
+          }`}
+          style={{ right: '120px' }}
+        >
+          🌍 {flatEarth ? 'Globe' : 'Flat Earth'}
+        </button>
+      )}
       <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
       {!isAR && <ZoomControls
         onZoomIn={() => setZoomDelta(d => d + 1)}
