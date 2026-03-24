@@ -103,14 +103,14 @@ export default function Home() {
 
     updatePositions();
 
-    // Update positions every 5s when real-time, faster when simulating
-    const interval = setInterval(updatePositions, isPlaying ? 1000 : 5000);
+    // Update positions regularly; sim clock drives the date via simRef
+    const interval = setInterval(updatePositions, isPlaying ? 500 : 5000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeGroups, loadGroup, isPlaying, simTime]);
+  }, [activeGroups, loadGroup, isPlaying]);
 
   const handleToggleAR = useCallback(() => {
     if (!isAR) {
