@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import EarthGlobe from '@/components/globe/EarthGlobe';
+import FlatEarthMap from '@/components/globe/FlatEarthMap';
 import SatellitePanel from '@/components/satellite/SatellitePanel';
 import StatsBar from '@/components/satellite/StatsBar';
 import ZoomControls from '@/components/satellite/ZoomControls';
