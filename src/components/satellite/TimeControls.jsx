@@ -17,7 +17,7 @@ export default function TimeControls({ simTime, isPlaying, speed, onTogglePlay, 
   const dateStr = new Date(simTime).toISOString().slice(0, 10);
 
   return (
-    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 w-[340px] max-w-[90vw]">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[340px] max-w-[90vw]">
       <div className="bg-card/85 backdrop-blur-xl border border-border/50 rounded-xl px-4 py-3 shadow-2xl">
         {/* Time display */}
         <div className="flex items-center justify-between mb-2">

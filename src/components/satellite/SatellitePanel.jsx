@@ -8,7 +8,7 @@ export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteC
   const [groupsVisible, setGroupsVisible] = useState(true);
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-72 md:w-80">
+    <div className="absolute top-4 left-4 z-10 w-64 md:w-72" style={{ maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl p-4 mb-3 shadow-2xl">
         <div className="flex items-center gap-3 mb-1">
@@ -29,7 +29,7 @@ export default function SatellitePanel({ activeGroups, onToggleGroup, satelliteC
       </div>
 
       {/* Groups */}
-      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden">
+      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden" style={{ overflowY: 'auto' }}>
         <button
           onClick={() => setGroupsVisible(v => !v)}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors"
