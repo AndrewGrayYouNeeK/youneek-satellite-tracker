@@ -10,7 +10,7 @@ export default function StatsBar({ totalCount, selectedSat }) {
   }, []);
 
   return (
-    <div className="absolute bottom-4 left-4 right-4 z-10">
+    <div className="absolute bottom-4 left-4 right-4 z-10" style={{ bottom: '120px' }}>
       <div className="bg-card/70 backdrop-blur-xl border border-border/50 rounded-xl px-4 py-3 flex items-center justify-between shadow-2xl">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
