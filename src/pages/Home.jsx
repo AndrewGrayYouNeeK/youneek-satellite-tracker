@@ -9,7 +9,7 @@ import TimeControls from '@/components/satellite/TimeControls';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 
-const MAX_SATS_PER_GROUP = 5000;
+const MAX_SATS_PER_GROUP = 10000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function Home() {
