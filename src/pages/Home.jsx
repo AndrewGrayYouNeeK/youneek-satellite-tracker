@@ -86,7 +86,7 @@ export default function Home() {
         const tles = await loadGroup(groupKey);
         if (cancelled) return;
 
-        // Sample to keep performance smooth but show more satellites
+        // Only sample if exceeds hard cap (Starlink has 6000+)
         let sampled = tles;
         if (tles.length > MAX_SATS_PER_GROUP) {
           const step = Math.ceil(tles.length / MAX_SATS_PER_GROUP);
