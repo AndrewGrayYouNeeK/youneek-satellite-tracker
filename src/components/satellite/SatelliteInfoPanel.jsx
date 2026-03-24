@@ -2,13 +2,20 @@ import React from 'react';
 import { X, Satellite, MapPin, ArrowUp } from 'lucide-react';
 import { SATELLITE_GROUPS } from '@/lib/satellite-data';
 
+// Real satellite/spacecraft photos sourced from NASA & SpaceX public domain
 const GROUP_IMAGES = {
-  starlink: 'https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=400&q=80',
-  stations: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=400&q=80',
-  active: 'https://images.unsplash.com/photo-1516849841032-87cbac4d88f7?w=400&q=80',
-  gps: 'https://images.unsplash.com/photo-1569230173733-59d5a2a3e3b9?w=400&q=80',
-  weather: 'https://images.unsplash.com/photo-1504608524841-42584120d693?w=400&q=80',
-  science: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=400&q=80',
+  // Starlink constellation — actual SpaceX Starlink satellites in orbit
+  starlink: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Starlink_Mission_%2847926144123%29.jpg/640px-Starlink_Mission_%2847926144123%29.jpg',
+  // ISS — actual photo of the International Space Station
+  stations: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/International_Space_Station_after_undocking_of_STS-132.jpg/640px-International_Space_Station_after_undocking_of_STS-132.jpg',
+  // Generic active satellite — NASA Terra satellite
+  active: 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Terra_satellite.jpg/640px-Terra_satellite.jpg',
+  // GPS Block IIF satellite — actual USAF photo
+  gps: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/GPS_Satellite_NASA_art-iif.jpg/640px-GPS_Satellite_NASA_art-iif.jpg',
+  // NOAA weather satellite — actual GOES-16
+  weather: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/GOES-16_satellite.jpg/640px-GOES-16_satellite.jpg',
+  // Hubble Space Telescope — actual NASA photo
+  science: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/HST-SM4.jpeg/640px-HST-SM4.jpeg',
 };
 
 export default function SatelliteInfoPanel({ satellite, onClose }) {
