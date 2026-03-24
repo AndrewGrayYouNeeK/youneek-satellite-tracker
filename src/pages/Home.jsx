@@ -15,6 +15,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
+  const [flatEarth, setFlatEarth] = useState(false);
   const [zoomDelta, setZoomDelta] = useState(0);
   const [selectedSat, setSelectedSat] = useState(null);
   const [isAR, setIsAR] = useState(false);
