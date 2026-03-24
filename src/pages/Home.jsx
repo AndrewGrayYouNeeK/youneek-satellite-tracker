@@ -48,46 +48,69 @@ export default function Home() {
     }
   }, []);
 
+  // Sim clock tick
+  useEffect(() => {
+    simRef.current = { time: simTime, speed: simSpeed, playing: isPlaying };
+  }, [simTime, simSpeed, isPlaying]);
+
+  useEffect(() => {
+    let lastTick = performance.now();
+    let raf;
+    const tick = (now) => {
+      raf = requestAnimationFrame(tick);
+      const { playing, speed, time } = simRef.current;
+      if (!playing) return;
+      const dt = now - lastTick;
+      lastTick = now;
+      const newTime = time + dt * speed;
+      // Loop within the current UTC day
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const looped = startOfDay.getTime() + ((newTime - startOfDay.getTime()) % DAY_MS);
+      simRef.current.time = looped;
+      setSimTime(looped);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   // Load and propagate satellites
   useEffect(() => {
     let cancelled = false;
 
     async function updatePositions() {
       const allPositions = [];
+      const date = new Date(simRef.current.time);
 
       for (const groupKey of activeGroups) {
         const tles = await loadGroup(groupKey);
         if (cancelled) return;
 
-        // For large groups like starlink/active, sample to keep performance smooth
+        // Sample to keep performance smooth but show more satellites
         let sampled = tles;
-        if (tles.length > 2000) {
-          const step = Math.ceil(tles.length / 2000);
+        if (tles.length > MAX_SATS_PER_GROUP) {
+          const step = Math.ceil(tles.length / MAX_SATS_PER_GROUP);
           sampled = tles.filter((_, i) => i % step === 0);
         }
 
-        const positions = getSatellitePositions(sampled);
-        positions.forEach(p => {
-          p.group = groupKey;
-        });
+        const positions = getSatellitePositions(sampled, date);
+        positions.forEach(p => { p.group = groupKey; });
         allPositions.push(...positions);
       }
 
-      if (!cancelled) {
-        setSatellites(allPositions);
-      }
+      if (!cancelled) setSatellites(allPositions);
     }
 
     updatePositions();
 
-    // Update positions every 10 seconds
-    const interval = setInterval(updatePositions, 10000);
+    // Update positions every 5s when real-time, faster when simulating
+    const interval = setInterval(updatePositions, isPlaying ? 1000 : 5000);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [activeGroups, loadGroup]);
+  }, [activeGroups, loadGroup, isPlaying, simTime]);
 
   const handleToggleAR = useCallback(() => {
     if (!isAR) {
