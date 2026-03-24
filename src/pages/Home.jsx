@@ -194,6 +194,16 @@ export default function Home() {
       />}
       {!isAR && <SatelliteInfoPanel satellite={selectedSat} onClose={() => setSelectedSat(null)} />}
       {!isAR && <StatsBar totalCount={totalCount} />}
+      {!isAR && (
+        <TimeControls
+          simTime={simTime}
+          isPlaying={isPlaying}
+          speed={simSpeed}
+          onTogglePlay={() => setIsPlaying(p => !p)}
+          onReset={() => { setSimTime(Date.now()); setIsPlaying(false); }}
+          onSpeedChange={(s) => setSimSpeed(s)}
+        />
+      )}
     </div>
   );
 }
