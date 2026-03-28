@@ -1,39 +1,31 @@
-**Welcome to your Base44 project** 
+# YouNeeK Satellite Tracker
 
-**About**
+Real-time 3D satellite tracking on an interactive Earth globe — see what's flying overhead right now.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+## About
 
-This project contains everything you need to run your app locally.
+YouNeeK Satellite Tracker renders live satellite positions on a 3D globe using real TLE (Two-Line Element) orbital data from public sources. Track Starlink constellations, the ISS, and thousands of other objects in real time or simulate time forward and backward at adjustable speeds.
 
-**Edit the code in your local development environment**
+## Features
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+- **Live 3D Earth Globe** — Interactive globe with satellite overlays
+- **Multiple Satellite Groups** — Starlink, ISS, space stations, and more
+- **Real TLE Data** — Positions calculated from up-to-date orbital elements
+- **Time Simulation** — Play, pause, and scrub through time at variable speeds
+- **Satellite Info Panel** — Click any satellite for name, altitude, speed, and orbit details
+- **AR Mode** — Point your device at the sky to see satellites in augmented reality
+- **Zoom Controls** — Pinch or button zoom on desktop and mobile
+- **Stats Bar** — Live count of tracked objects per group
 
-**Prerequisites:** 
+## Running Locally
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
-
+```bash
+git clone https://github.com/AndrewGrayYouNeeK/youneek-satellite-tracker.git
+cd youneek-satellite-tracker
+npm install
+npm run dev
 ```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
 
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
-```
+## Built By
 
-Run the app: `npm run dev`
-
-**Publish your changes**
-
-Open [Base44.com](http://Base44.com) and click on Publish.
-
-**Docs & Support**
-
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
-
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+Andrew Gray — YouNeeK
