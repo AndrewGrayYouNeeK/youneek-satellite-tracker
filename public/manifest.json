@@ -1,0 +1,16 @@
+{
+  "name": "YouNeeK Satellite Tracker",
+  "short_name": "SatTracker",
+  "description": "Real-time 3D satellite tracking on an interactive Earth globe",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1a",
+  "theme_color": "#22d3ee",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

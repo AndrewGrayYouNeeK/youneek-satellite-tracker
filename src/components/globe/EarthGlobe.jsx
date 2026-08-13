@@ -14,7 +14,7 @@ function latLngToVector3(lat, lng, radius) {
   );
 }
 
-export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick, gyroRotation = null }) {
+export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick, gyroRotation = null, focusSatellite = null }) {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
@@ -215,19 +215,28 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
 
     Object.entries(groupedSats).forEach(([group, sats]) => {
       const positions = [];
+      const colors = [];
       const color = new THREE.Color(groupColors[group] || '#ffffff');
       sats.forEach(sat => {
         const radius = 1.01 + (sat.altitude || 400) / 40000;
         const vec = latLngToVector3(sat.lat, sat.lng, radius);
         positions.push(vec.x, vec.y, vec.z);
+        if (sat.highlighted) {
+          colors.push(1, 1, 1);
+        } else {
+          colors.push(color.r, color.g, color.b);
+        }
       });
       if (positions.length === 0) return;
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      const hasHighlight = sats.some(s => s.highlighted);
       const mat = new THREE.PointsMaterial({
-        color,
-        size: group === 'stations' ? 0.04 : 0.015,
+        vertexColors: true,
+        color: hasHighlight ? 0xffffff : color,
+        size: group === 'stations' ? 0.04 : (hasHighlight ? 0.035 : 0.015),
         transparent: true,
         opacity: 0.9,
         blending: THREE.AdditiveBlending,
@@ -239,6 +248,16 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       satelliteDataRef.current[group] = sats; // store parallel data
     });
   }, [satellites, groupColors, activeGroups]);
+
+  // Focus on selected satellite
+  useEffect(() => {
+    if (!focusSatellite || focusSatellite.lat == null) return;
+    const latRad = focusSatellite.lat * DEG2RAD;
+    const lngRad = focusSatellite.lng * DEG2RAD;
+    targetRotationRef.current.x = -latRad * 0.9;
+    targetRotationRef.current.y = -lngRad - Math.PI / 2;
+    zoomRef.current = 2.2;
+  }, [focusSatellite]);
 
   // Animation loop
   useEffect(() => {
@@ -282,7 +301,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         rendererRef.current.dispose();
       }
     };
-  }, [initScene]);
+  }, [initScene, gyroRotation]);
 
   // Mouse / touch / resize events
   useEffect(() => {
