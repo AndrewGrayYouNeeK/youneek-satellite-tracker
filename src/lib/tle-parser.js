@@ -125,8 +125,9 @@ export function propagate(tle, date) {
   const lng = Math.atan2(yECEF, xECEF) * RAD2DEG;
   const lat = Math.atan2(zECEF, Math.sqrt(xECEF * xECEF + yECEF * yECEF)) * RAD2DEG;
   const altitude = r - EARTH_RADIUS;
+  const velocity = Math.sqrt(MU / r);
 
-  return { lat, lng, altitude, r };
+  return { lat, lng, altitude, r, velocity };
 }
 
 export function parseTLEData(rawData) {
@@ -155,6 +156,7 @@ export function getSatellitePositions(satellites, date = new Date()) {
         lat: pos.lat,
         lng: pos.lng,
         altitude: pos.altitude,
+        velocity: pos.velocity,
       };
     } catch {
       return null;

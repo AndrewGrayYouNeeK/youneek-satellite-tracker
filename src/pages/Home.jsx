@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import EarthGlobe from '@/components/globe/EarthGlobe';
 import SatellitePanel from '@/components/satellite/SatellitePanel';
-import StatsBar from '@/components/satellite/StatsBar';
 import ZoomControls from '@/components/satellite/ZoomControls';
 import SatelliteInfoPanel from '@/components/satellite/SatelliteInfoPanel';
 import ARModeButton from '@/components/satellite/ARModeButton';
 import TimeControls from '@/components/satellite/TimeControls';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
+import { Loader2 } from 'lucide-react';
 
 const MAX_SATS_PER_GROUP = 10000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,15 +16,18 @@ export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
   const [zoomDelta, setZoomDelta] = useState(0);
   const [selectedSat, setSelectedSat] = useState(null);
+  const [highlightedSat, setHighlightedSat] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAR, setIsAR] = useState(false);
   const [gyroRotation, setGyroRotation] = useState(null);
   const gyroBaseRef = useRef(null);
   const [satellites, setSatellites] = useState([]);
   const [satelliteCounts, setSatelliteCounts] = useState({});
   const [loading, setLoading] = useState({});
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState({});
   const tleCache = useRef({});
 
-  // Time simulation
   const [simTime, setSimTime] = useState(Date.now());
   const [isPlaying, setIsPlaying] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1);
@@ -34,6 +37,7 @@ export default function Home() {
     if (tleCache.current[groupKey]) return tleCache.current[groupKey];
 
     setLoading(prev => ({ ...prev, [groupKey]: true }));
+    setLoadErrors(prev => ({ ...prev, [groupKey]: null }));
     try {
       const rawTLE = await fetchSatelliteGroup(groupKey);
       const tles = parseTLEData(rawTLE);
@@ -42,13 +46,13 @@ export default function Home() {
       return tles;
     } catch (err) {
       console.error(`Failed to load ${groupKey}:`, err);
+      setLoadErrors(prev => ({ ...prev, [groupKey]: err.message || 'Failed to load' }));
       return [];
     } finally {
       setLoading(prev => ({ ...prev, [groupKey]: false }));
     }
   }, []);
 
-  // Sim clock tick
   useEffect(() => {
     simRef.current = { time: simTime, speed: simSpeed, playing: isPlaying };
   }, [simTime, simSpeed, isPlaying]);
@@ -63,7 +67,6 @@ export default function Home() {
       const dt = now - lastTick;
       lastTick = now;
       const newTime = time + dt * speed;
-      // Loop within the current UTC day
       const startOfDay = new Date();
       startOfDay.setUTCHours(0, 0, 0, 0);
       const looped = startOfDay.getTime() + ((newTime - startOfDay.getTime()) % DAY_MS);
@@ -74,7 +77,6 @@ export default function Home() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Load and propagate satellites
   useEffect(() => {
     let cancelled = false;
 
@@ -86,7 +88,6 @@ export default function Home() {
         const tles = await loadGroup(groupKey);
         if (cancelled) return;
 
-        // Only sample if exceeds hard cap (Starlink has 6000+)
         let sampled = tles;
         if (tles.length > MAX_SATS_PER_GROUP) {
           const step = Math.ceil(tles.length / MAX_SATS_PER_GROUP);
@@ -98,12 +99,13 @@ export default function Home() {
         allPositions.push(...positions);
       }
 
-      if (!cancelled) setSatellites(allPositions);
+      if (!cancelled) {
+        setSatellites(allPositions);
+        setInitialLoading(false);
+      }
     }
 
     updatePositions();
-
-    // Update positions regularly; sim clock drives the date via simRef
     const interval = setInterval(updatePositions, isPlaying ? 500 : 5000);
 
     return () => {
@@ -112,18 +114,30 @@ export default function Home() {
     };
   }, [activeGroups, loadGroup, isPlaying]);
 
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim() || searchQuery.length < 2) return [];
+    const q = searchQuery.toLowerCase();
+    return satellites
+      .filter(s => s.name?.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [satellites, searchQuery]);
+
+  const handleSelectSearchResult = useCallback((sat) => {
+    setSelectedSat(sat);
+    setHighlightedSat(sat);
+    setSearchQuery('');
+  }, []);
+
   const handleToggleAR = useCallback(() => {
     if (!isAR) {
       document.documentElement.requestFullscreen?.();
       gyroBaseRef.current = null;
 
       const handleOrientation = (e) => {
-        const alpha = (e.alpha ?? 0) * Math.PI / 180; // compass (left/right)
-        const beta  = (e.beta  ?? 0) * Math.PI / 180; // front/back tilt
+        const alpha = (e.alpha ?? 0) * Math.PI / 180;
+        const beta  = (e.beta  ?? 0) * Math.PI / 180;
         if (!gyroBaseRef.current) gyroBaseRef.current = { alpha, beta };
-        // Map alpha (compass heading) to Y rotation, beta (tilt) to X rotation
         let dy = alpha - gyroBaseRef.current.alpha;
-        // Handle wrap-around at 0/360
         if (dy > Math.PI) dy -= 2 * Math.PI;
         if (dy < -Math.PI) dy += 2 * Math.PI;
         setGyroRotation({
@@ -161,6 +175,14 @@ export default function Home() {
     );
   }, []);
 
+  const handleTimeScrub = useCallback((progress) => {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const newTime = startOfDay.getTime() + (progress / 100) * DAY_MS;
+    setSimTime(newTime);
+    simRef.current.time = newTime;
+  }, []);
+
   const groupColors = {};
   Object.entries(SATELLITE_GROUPS).forEach(([key, group]) => {
     groupColors[key] = group.color;
@@ -170,39 +192,75 @@ export default function Home() {
     .filter(([key]) => activeGroups.includes(key))
     .reduce((sum, [, count]) => sum + count, 0);
 
+  const visibleSatellites = useMemo(() => {
+    if (!highlightedSat) return satellites;
+    return satellites.map(s =>
+      s.name === highlightedSat.name && s.group === highlightedSat.group
+        ? { ...s, highlighted: true }
+        : s
+    );
+  }, [satellites, highlightedSat]);
+
   return (
     <div className={`fixed inset-0 bg-background overflow-hidden ${isAR ? 'bg-black' : ''}`}>
+      {initialLoading && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
+          <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+          <p className="text-sm text-muted-foreground">Loading orbital data…</p>
+        </div>
+      )}
+
       <EarthGlobe
-        satellites={satellites}
+        satellites={visibleSatellites}
         groupColors={groupColors}
         activeGroups={activeGroups}
         zoomDelta={zoomDelta}
-        onSatelliteClick={setSelectedSat}
+        onSatelliteClick={(sat) => {
+          setSelectedSat(sat);
+          setHighlightedSat(sat);
+        }}
         gyroRotation={gyroRotation}
+        focusSatellite={highlightedSat}
       />
+
       <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
-      {!isAR && <ZoomControls
-        onZoomIn={() => setZoomDelta(d => d + 1)}
-        onZoomOut={() => setZoomDelta(d => d - 1)}
-      />}
-      {!isAR && <SatellitePanel
-        activeGroups={activeGroups}
-        onToggleGroup={handleToggleGroup}
-        satelliteCounts={satelliteCounts}
-        loading={loading}
-        totalCount={totalCount}
-      />}
-      {!isAR && <SatelliteInfoPanel satellite={selectedSat} onClose={() => setSelectedSat(null)} />}
-      {!isAR && <StatsBar totalCount={totalCount} />}
+
       {!isAR && (
-        <TimeControls
-          simTime={simTime}
-          isPlaying={isPlaying}
-          speed={simSpeed}
-          onTogglePlay={() => setIsPlaying(p => !p)}
-          onReset={() => { setSimTime(Date.now()); setIsPlaying(false); }}
-          onSpeedChange={(s) => setSimSpeed(s)}
-        />
+        <>
+          <ZoomControls
+            onZoomIn={() => setZoomDelta(d => d + 1)}
+            onZoomOut={() => setZoomDelta(d => d - 1)}
+          />
+          <SatellitePanel
+            activeGroups={activeGroups}
+            onToggleGroup={handleToggleGroup}
+            satelliteCounts={satelliteCounts}
+            loading={loading}
+            loadErrors={loadErrors}
+            totalCount={totalCount}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchResults={searchResults}
+            onSelectSearchResult={handleSelectSearchResult}
+          />
+          <SatelliteInfoPanel
+            satellite={selectedSat}
+            onClose={() => {
+              setSelectedSat(null);
+              setHighlightedSat(null);
+            }}
+          />
+          <TimeControls
+            simTime={simTime}
+            isPlaying={isPlaying}
+            speed={simSpeed}
+            totalCount={totalCount}
+            onTogglePlay={() => setIsPlaying(p => !p)}
+            onReset={() => { setSimTime(Date.now()); simRef.current.time = Date.now(); setIsPlaying(false); }}
+            onSpeedChange={(s) => setSimSpeed(s)}
+            onTimeScrub={handleTimeScrub}
+          />
+        </>
       )}
     </div>
   );

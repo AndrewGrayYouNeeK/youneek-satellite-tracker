@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-// satelliteDataRef maps group -> array of sat objects (same order as Points geometry)
 import * as THREE from 'three';
 
 const DEG2RAD = Math.PI / 180;
@@ -14,20 +13,25 @@ function latLngToVector3(lat, lng, radius) {
   );
 }
 
-export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick, gyroRotation = null }) {
+export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick, gyroRotation = null, focusSatellite = null }) {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const globeGroupRef = useRef(null); // single group that rotates everything
-  const satellitePointsRef = useRef({});
-  const satelliteDataRef = useRef({}); // group -> sat array (parallel to Points geometry)
+  const satellitePointsRef = useRef([]);
+  const satelliteDataRef = useRef(new Map());
   const animationRef = useRef(null);
   const mouseRef = useRef({ isDragging: false, prevX: 0, prevY: 0 });
   const rotationRef = useRef({ x: 0.3, y: 0 });
   const targetRotationRef = useRef({ x: 0.3, y: 0 });
   const zoomRef = useRef(2.8);
   const prevZoomDeltaRef = useRef(0);
+  const gyroRotationRef = useRef(gyroRotation);
+
+  useEffect(() => {
+    gyroRotationRef.current = gyroRotation;
+  }, [gyroRotation]);
 
   const initScene = useCallback(() => {
     if (!containerRef.current) return;
@@ -197,13 +201,13 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     if (!sceneRef.current || !globeGroupRef.current) return;
 
     // Remove old sat points from globe group
-    Object.values(satellitePointsRef.current).forEach(pts => {
+    satellitePointsRef.current.forEach(pts => {
       globeGroupRef.current.remove(pts);
       pts.geometry.dispose();
       pts.material.dispose();
     });
-    satellitePointsRef.current = {};
-    satelliteDataRef.current = {};
+    satellitePointsRef.current = [];
+    satelliteDataRef.current = new Map();
 
     const groupedSats = {};
     satellites.forEach(sat => {
@@ -213,21 +217,25 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       groupedSats[group].push(sat);
     });
 
-    Object.entries(groupedSats).forEach(([group, sats]) => {
+    const addPointCloud = (sats, size, color) => {
+      if (sats.length === 0) return;
+
       const positions = [];
-      const color = new THREE.Color(groupColors[group] || '#ffffff');
+      const colors = [];
       sats.forEach(sat => {
         const radius = 1.01 + (sat.altitude || 400) / 40000;
         const vec = latLngToVector3(sat.lat, sat.lng, radius);
         positions.push(vec.x, vec.y, vec.z);
+        colors.push(color.r, color.g, color.b);
       });
-      if (positions.length === 0) return;
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
       const mat = new THREE.PointsMaterial({
-        color,
-        size: group === 'stations' ? 0.04 : 0.015,
+        vertexColors: true,
+        color: 0xffffff,
+        size,
         transparent: true,
         opacity: 0.9,
         blending: THREE.AdditiveBlending,
@@ -235,10 +243,30 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       });
       const pts = new THREE.Points(geo, mat);
       globeGroupRef.current.add(pts);
-      satellitePointsRef.current[group] = pts;
-      satelliteDataRef.current[group] = sats; // store parallel data
+      satellitePointsRef.current.push(pts);
+      satelliteDataRef.current.set(pts, sats);
+    };
+
+    Object.entries(groupedSats).forEach(([group, sats]) => {
+      const groupColor = new THREE.Color(groupColors[group] || '#ffffff');
+      const baseSize = group === 'stations' ? 0.04 : 0.015;
+      const normalSats = sats.filter(sat => !sat.highlighted);
+      const highlightedSats = sats.filter(sat => sat.highlighted);
+
+      addPointCloud(normalSats, baseSize, groupColor);
+      addPointCloud(highlightedSats, baseSize * 2.3, new THREE.Color(1, 1, 1));
     });
   }, [satellites, groupColors, activeGroups]);
+
+  // Focus on selected satellite
+  useEffect(() => {
+    if (!focusSatellite || focusSatellite.lat == null) return;
+    const latRad = focusSatellite.lat * DEG2RAD;
+    const lngRad = focusSatellite.lng * DEG2RAD;
+    targetRotationRef.current.x = -latRad * 0.9;
+    targetRotationRef.current.y = -lngRad - Math.PI / 2;
+    zoomRef.current = 2.2;
+  }, [focusSatellite]);
 
   // Animation loop
   useEffect(() => {
@@ -248,9 +276,10 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       animationRef.current = requestAnimationFrame(animate);
 
       if (!mouseRef.current.isDragging) {
-        if (gyroRotation) {
-          targetRotationRef.current.x = gyroRotation.x;
-          targetRotationRef.current.y = gyroRotation.y;
+        const gyro = gyroRotationRef.current;
+        if (gyro) {
+          targetRotationRef.current.x = gyro.x;
+          targetRotationRef.current.y = gyro.y;
         } else {
           targetRotationRef.current.y += 0.001;
         }
@@ -306,17 +335,12 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points.threshold = 0.03;
         raycaster.setFromCamera({ x, y }, cameraRef.current);
-        const pts = Object.values(satellitePointsRef.current);
+        const pts = satellitePointsRef.current;
         const intersects = raycaster.intersectObjects(pts);
         if (intersects.length > 0) {
           const hit = intersects[0];
-          const hitObj = hit.object;
-          const idx = hit.index;
-          const group = Object.keys(satellitePointsRef.current).find(
-            k => satellitePointsRef.current[k] === hitObj
-          );
-          const satData = satelliteDataRef.current[group]?.[idx];
-          if (satData) onSatelliteClick({ ...satData, group });
+          const satData = satelliteDataRef.current.get(hit.object)?.[hit.index];
+          if (satData) onSatelliteClick({ ...satData, group: satData.group });
         } else {
           onSatelliteClick(null);
         }
