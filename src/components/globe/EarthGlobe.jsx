@@ -28,6 +28,11 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
   const targetRotationRef = useRef({ x: 0.3, y: 0 });
   const zoomRef = useRef(2.8);
   const prevZoomDeltaRef = useRef(0);
+  const gyroRotationRef = useRef(gyroRotation);
+
+  useEffect(() => {
+    gyroRotationRef.current = gyroRotation;
+  }, [gyroRotation]);
 
   const initScene = useCallback(() => {
     if (!containerRef.current) return;
@@ -267,9 +272,10 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       animationRef.current = requestAnimationFrame(animate);
 
       if (!mouseRef.current.isDragging) {
-        if (gyroRotation) {
-          targetRotationRef.current.x = gyroRotation.x;
-          targetRotationRef.current.y = gyroRotation.y;
+        const gyro = gyroRotationRef.current;
+        if (gyro) {
+          targetRotationRef.current.x = gyro.x;
+          targetRotationRef.current.y = gyro.y;
         } else {
           targetRotationRef.current.y += 0.001;
         }
@@ -301,7 +307,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         rendererRef.current.dispose();
       }
     };
-  }, [initScene, gyroRotation]);
+  }, [initScene]);
 
   // Mouse / touch / resize events
   useEffect(() => {
