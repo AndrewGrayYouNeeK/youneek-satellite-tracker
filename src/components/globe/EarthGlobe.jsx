@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-// satelliteDataRef maps group -> array of sat objects (same order as Points geometry)
 import * as THREE from 'three';
 
 const DEG2RAD = Math.PI / 180;
@@ -20,8 +19,8 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const globeGroupRef = useRef(null); // single group that rotates everything
-  const satellitePointsRef = useRef({});
-  const satelliteDataRef = useRef({}); // group -> sat array (parallel to Points geometry)
+  const satellitePointsRef = useRef([]);
+  const satelliteDataRef = useRef(new Map());
   const animationRef = useRef(null);
   const mouseRef = useRef({ isDragging: false, prevX: 0, prevY: 0 });
   const rotationRef = useRef({ x: 0.3, y: 0 });
@@ -202,13 +201,13 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     if (!sceneRef.current || !globeGroupRef.current) return;
 
     // Remove old sat points from globe group
-    Object.values(satellitePointsRef.current).forEach(pts => {
+    satellitePointsRef.current.forEach(pts => {
       globeGroupRef.current.remove(pts);
       pts.geometry.dispose();
       pts.material.dispose();
     });
-    satellitePointsRef.current = {};
-    satelliteDataRef.current = {};
+    satellitePointsRef.current = [];
+    satelliteDataRef.current = new Map();
 
     const groupedSats = {};
     satellites.forEach(sat => {
@@ -218,30 +217,25 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       groupedSats[group].push(sat);
     });
 
-    Object.entries(groupedSats).forEach(([group, sats]) => {
+    const addPointCloud = (sats, size, color) => {
+      if (sats.length === 0) return;
+
       const positions = [];
       const colors = [];
-      const color = new THREE.Color(groupColors[group] || '#ffffff');
       sats.forEach(sat => {
         const radius = 1.01 + (sat.altitude || 400) / 40000;
         const vec = latLngToVector3(sat.lat, sat.lng, radius);
         positions.push(vec.x, vec.y, vec.z);
-        if (sat.highlighted) {
-          colors.push(1, 1, 1);
-        } else {
-          colors.push(color.r, color.g, color.b);
-        }
+        colors.push(color.r, color.g, color.b);
       });
-      if (positions.length === 0) return;
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      const hasHighlight = sats.some(s => s.highlighted);
       const mat = new THREE.PointsMaterial({
         vertexColors: true,
         color: 0xffffff,
-        size: group === 'stations' ? 0.04 : (hasHighlight ? 0.035 : 0.015),
+        size,
         transparent: true,
         opacity: 0.9,
         blending: THREE.AdditiveBlending,
@@ -249,8 +243,18 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       });
       const pts = new THREE.Points(geo, mat);
       globeGroupRef.current.add(pts);
-      satellitePointsRef.current[group] = pts;
-      satelliteDataRef.current[group] = sats; // store parallel data
+      satellitePointsRef.current.push(pts);
+      satelliteDataRef.current.set(pts, sats);
+    };
+
+    Object.entries(groupedSats).forEach(([group, sats]) => {
+      const groupColor = new THREE.Color(groupColors[group] || '#ffffff');
+      const baseSize = group === 'stations' ? 0.04 : 0.015;
+      const normalSats = sats.filter(sat => !sat.highlighted);
+      const highlightedSats = sats.filter(sat => sat.highlighted);
+
+      addPointCloud(normalSats, baseSize, groupColor);
+      addPointCloud(highlightedSats, baseSize * 2.3, new THREE.Color(1, 1, 1));
     });
   }, [satellites, groupColors, activeGroups]);
 
@@ -331,17 +335,12 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points.threshold = 0.03;
         raycaster.setFromCamera({ x, y }, cameraRef.current);
-        const pts = Object.values(satellitePointsRef.current);
+        const pts = satellitePointsRef.current;
         const intersects = raycaster.intersectObjects(pts);
         if (intersects.length > 0) {
           const hit = intersects[0];
-          const hitObj = hit.object;
-          const idx = hit.index;
-          const group = Object.keys(satellitePointsRef.current).find(
-            k => satellitePointsRef.current[k] === hitObj
-          );
-          const satData = satelliteDataRef.current[group]?.[idx];
-          if (satData) onSatelliteClick({ ...satData, group });
+          const satData = satelliteDataRef.current.get(hit.object)?.[hit.index];
+          if (satData) onSatelliteClick({ ...satData, group: satData.group });
         } else {
           onSatelliteClick(null);
         }
