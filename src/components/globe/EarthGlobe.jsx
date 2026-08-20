@@ -240,7 +240,7 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       const hasHighlight = sats.some(s => s.highlighted);
       const mat = new THREE.PointsMaterial({
         vertexColors: true,
-        color: hasHighlight ? 0xffffff : color,
+        color: 0xffffff,
         size: group === 'stations' ? 0.04 : (hasHighlight ? 0.035 : 0.015),
         transparent: true,
         opacity: 0.9,
