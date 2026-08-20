@@ -30,15 +30,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Deployment
 
-### GitHub Pages (recommended)
-
-Pushes to `main` deploy automatically via GitHub Actions. Enable Pages in the repo settings under **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Pushes to `main` deploy automatically to GitHub Pages via GitHub Actions. Enable Pages in the repo settings under **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
 Live site: [https://andrewgrayyouneek.github.io/youneek-satellite-tracker/](https://andrewgrayyouneek.github.io/youneek-satellite-tracker/)
-
-### Vercel
-
-If Vercel checks fail with **"Account is blocked"**, the linked Vercel account or project is paused — unpause it in the [Vercel dashboard](https://vercel.com/dashboard) or remove the duplicate Vercel GitHub integration from **Settings → Integrations** in this repo. The app builds successfully with `npm run build`; the failure is account-level, not a code issue.
 
 ## Tech Stack
 
