@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "starlit-tracker",
+  "account_id": "d74b0de637f4d9d9eb3efb9e13142784",
+  // Set to the deploy date; keep current when updating this Worker later.
+  "compatibility_date": "2026-11-06",
+  // Assets-only Worker: no `main` script, so no ASSETS binding is needed.
+  // Vite SPA: unmatched paths fall back to index.html for React Router.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

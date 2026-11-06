@@ -35,20 +35,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Clear blocked Vercel status checks
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          STATUS_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: |
-          for context in \
-            "Vercel – youneek-satellite-tracker" \
-            "Vercel – youneek-satellite-tracker-utdl"
-          do
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${STATUS_SHA}" \
-              -f state=success \
-              -f context="$context" \
-              -f description="Vercel disconnected — GitHub Actions CI passed" \
-              -f target_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          done
