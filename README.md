@@ -30,9 +30,17 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Deployment
 
-Pushes to `main` deploy automatically to GitHub Pages via GitHub Actions. Enable Pages in the repo settings under **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Production runs on **Cloudflare Workers** as a static-asset Worker, served at [https://starlit.youneek.dev/](https://starlit.youneek.dev/).
 
-Live site: [https://andrewgrayyouneek.github.io/youneek-satellite-tracker/](https://andrewgrayyouneek.github.io/youneek-satellite-tracker/)
+The repository ships a `wrangler.jsonc` that deploys the Vite build output (`dist/`) as a Workers static-asset site with single-page-application routing (`not_found_handling = "single-page-application"`), so React Router works at the domain root. Deploy with:
+
+```bash
+npm run deploy
+```
+
+This builds the app and runs `wrangler deploy` using the `starlit-tracker` Worker config. DNS and the `starlit.youneek.dev` custom domain are configured separately in the Cloudflare dashboard — nothing in this repo creates or changes DNS records.
+
+A GitHub Pages workflow (`.github/workflows/pages.yml`) is still available as a mirror deployment; it builds with `GITHUB_PAGES=true` so asset URLs are prefixed with `/youneek-satellite-tracker/`.
 
 ## Tech Stack
 
