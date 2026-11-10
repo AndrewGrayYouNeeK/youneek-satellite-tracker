@@ -2,12 +2,28 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "starlit-tracker",
   "account_id": "d74b0de637f4d9d9eb3efb9e13142784",
-  // Set to the deploy date; keep current when updating this Worker later.
-  "compatibility_date": "2026-11-06",
-  // Assets-only Worker: no `main` script, so no ASSETS binding is needed.
-  // Vite SPA: unmatched paths fall back to index.html for React Router.
+  "main": "worker/index.js",
+  // Reviewed 2026-11-10. Dates before 2026-11-17 keep the current module
+  // registry and request.signal defaults. This Worker uses fetch, the Cache
+  // API, and the assets binding only — no Node built-ins.
+  "compatibility_date": "2026-11-10",
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // API routes run the Worker. Everything else is a static asset, with
+    // unknown paths falling back to index.html for the SPA.
+    "run_worker_first": ["/api/*"]
   }
 }

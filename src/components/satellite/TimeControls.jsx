@@ -35,7 +35,7 @@ export default function TimeControls({
   };
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[380px] max-w-[90vw]">
+    <div data-view-obstruction="timebar" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[380px] max-w-[90vw]">
       <div className="bg-card/85 backdrop-blur-xl border border-border/50 rounded-xl px-4 py-3 shadow-2xl">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">

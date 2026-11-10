@@ -1,5 +1,14 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {
+  DESKTOP_MIN_WIDTH,
+  HOME_TILT_RAD,
+  cameraDistanceLimits,
+  fitCameraDistance,
+  viewOffsetForRect,
+  visibleGlobeRect,
+} from '@/lib/globe-frame';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -13,52 +22,175 @@ function latLngToVector3(lat, lng, radius) {
   );
 }
 
-export default function EarthGlobe({ satellites = [], groupColors = {}, activeGroups = [], zoomDelta = 0, onSatelliteClick, gyroRotation = null, focusSatellite = null }) {
+function readChromeBounds(container) {
+  const origin = container.getBoundingClientRect();
+  const edge = (name, prop) => {
+    const el = document.querySelector(`[data-view-obstruction="${name}"]`);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (prop === 'right') return rect.right - origin.left;
+    if (prop === 'left') return rect.left - origin.left;
+    return rect.top - origin.top;
+  };
+  return {
+    panelRight: edge('panel', 'right'),
+    zoomLeft: edge('zoom', 'left'),
+    timebarTop: edge('timebar', 'top'),
+  };
+}
+
+export default function EarthGlobe({
+  satellites = [],
+  groupColors = {},
+  activeGroups = [],
+  zoomDelta = 0,
+  onSatelliteClick,
+  gyroRotation = null,
+  focusSatellite = null,
+  viewResetToken = 0,
+}) {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
-  const globeGroupRef = useRef(null); // single group that rotates everything
+  const controlsRef = useRef(null);
+  const globeGroupRef = useRef(null);
   const satellitePointsRef = useRef([]);
   const satelliteDataRef = useRef(new Map());
   const animationRef = useRef(null);
-  const mouseRef = useRef({ isDragging: false, prevX: 0, prevY: 0 });
-  const rotationRef = useRef({ x: 0.3, y: 0 });
-  const targetRotationRef = useRef({ x: 0.3, y: 0 });
-  const zoomRef = useRef(2.8);
+  const fittedRef = useRef(3);
+  const distanceLockedRef = useRef(false);
+  const framingRef = useRef(false);
+  const frameRef = useRef(null);
+  const gyroRef = useRef(gyroRotation);
+  const focusKeyRef = useRef('');
   const prevZoomDeltaRef = useRef(0);
-  const gyroRotationRef = useRef(gyroRotation);
+  const viewResetSeenRef = useRef(viewResetToken);
+  const propsRef = useRef({ satellites, groupColors, activeGroups, onSatelliteClick });
+  propsRef.current = { satellites, groupColors, activeGroups, onSatelliteClick };
+
+  const rebuildPoints = useCallback(() => {
+    const globe = globeGroupRef.current;
+    if (!globe) return;
+    const { satellites: sats, groupColors: colors, activeGroups: groups } = propsRef.current;
+
+    satellitePointsRef.current.forEach((pts) => {
+      globe.remove(pts);
+      pts.geometry.dispose();
+      pts.material.dispose();
+    });
+    satellitePointsRef.current = [];
+    satelliteDataRef.current = new Map();
+
+    const grouped = {};
+    sats.forEach((sat) => {
+      const group = sat.group || 'unknown';
+      if (!groups.includes(group)) return;
+      if (!grouped[group]) grouped[group] = [];
+      grouped[group].push(sat);
+    });
+
+    const addPointCloud = (items, size, color) => {
+      if (items.length === 0) return;
+      const positions = [];
+      const pointColors = [];
+      items.forEach((sat) => {
+        const radius = 1.01 + (sat.altitude || 400) / 40000;
+        const vec = latLngToVector3(sat.lat, sat.lng, radius);
+        positions.push(vec.x, vec.y, vec.z);
+        pointColors.push(color.r, color.g, color.b);
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(pointColors, 3));
+      const mat = new THREE.PointsMaterial({
+        vertexColors: true,
+        color: 0xffffff,
+        size,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const pts = new THREE.Points(geo, mat);
+      globe.add(pts);
+      satellitePointsRef.current.push(pts);
+      satelliteDataRef.current.set(pts, items);
+    };
+
+    Object.entries(grouped).forEach(([group, items]) => {
+      const groupColor = new THREE.Color(colors[group] || '#ffffff');
+      const baseSize = group === 'stations' ? 0.045 : 0.02;
+      addPointCloud(items.filter((sat) => !sat.highlighted), baseSize, groupColor);
+      addPointCloud(items.filter((sat) => sat.highlighted), baseSize * 2.3, new THREE.Color(1, 1, 1));
+    });
+  }, []);
 
   useEffect(() => {
-    gyroRotationRef.current = gyroRotation;
+    gyroRef.current = gyroRotation;
+    const controls = controlsRef.current;
+    if (!controls) return;
+    if (gyroRotation) {
+      controls.enabled = false;
+      controls.autoRotate = false;
+    } else {
+      controls.enabled = true;
+      if (globeGroupRef.current) globeGroupRef.current.rotation.set(0, 0, 0);
+      if (!focusKeyRef.current) controls.autoRotate = true;
+    }
   }, [gyroRotation]);
 
-  const initScene = useCallback(() => {
-    if (!containerRef.current) return;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
+    const width = container.clientWidth || window.innerWidth;
+    const height = container.clientHeight || window.innerHeight;
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.z = zoomRef.current;
+    camera.position.set(0, Math.sin(HOME_TILT_RAD) * 4, Math.cos(HOME_TILT_RAD) * 4);
+    camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Single pivot group for the entire globe (ocean + land + grid)
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 0);
+    controls.enablePan = false;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.zoomSpeed = 0.7;
+    controls.rotateSpeed = 0.55;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.55;
+    controls.minDistance = 1.6;
+    controls.maxDistance = 12;
+    controlsRef.current = controls;
+
+    controls.addEventListener('start', () => {
+      controls.autoRotate = false;
+    });
+    controls.addEventListener('end', () => {
+      if (!gyroRef.current && !focusKeyRef.current) controls.autoRotate = true;
+    });
+    controls.addEventListener('change', () => {
+      if (framingRef.current) return;
+      const distance = camera.position.length();
+      if (Math.abs(distance - fittedRef.current) > 0.08) distanceLockedRef.current = true;
+    });
+
     const globeGroup = new THREE.Group();
     scene.add(globeGroup);
     globeGroupRef.current = globeGroup;
 
-    // ── Ocean sphere (dark blue) ──
     const oceanMesh = new THREE.Mesh(
       new THREE.SphereGeometry(1, 64, 64),
       new THREE.MeshPhongMaterial({
@@ -70,7 +202,6 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     );
     globeGroup.add(oceanMesh);
 
-    // ── Subtle lat/lng grid ──
     const gridMat = new THREE.LineBasicMaterial({ color: 0x0a2040, transparent: true, opacity: 0.3 });
     for (let lat = -80; lat <= 80; lat += 20) {
       const pts = [];
@@ -83,7 +214,6 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       globeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), gridMat));
     }
 
-    // ── Country land + borders from GeoJSON ──
     const landMat = new THREE.MeshPhongMaterial({
       color: 0x0e2540,
       emissive: 0x060f1e,
@@ -92,24 +222,22 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
       side: THREE.FrontSide,
     });
     const borderMat = new THREE.LineBasicMaterial({ color: 0x2060a0, transparent: true, opacity: 0.85 });
-    const coastMat  = new THREE.LineBasicMaterial({ color: 0x2a72b5, transparent: true, opacity: 0.95 });
+    const coastMat = new THREE.LineBasicMaterial({ color: 0x2a72b5, transparent: true, opacity: 0.95 });
 
     fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
-      .then(r => r.json())
-      .then(geojson => {
-        geojson.features.forEach(feature => {
+      .then((r) => r.json())
+      .then((geojson) => {
+        geojson.features.forEach((feature) => {
           const geom = feature.geometry;
           const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
-          polys.forEach(poly => {
+          polys.forEach((poly) => {
             poly.forEach((ring, ringIdx) => {
-              // Draw coastline / border line
               const pts = ring.map(([lng, lat]) => latLngToVector3(lat, lng, 1.003));
               globeGroup.add(new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints(pts),
                 ringIdx === 0 ? coastMat : borderMat
               ));
 
-              // Fill land with fan triangulation from centroid
               if (ringIdx === 0 && ring.length > 3) {
                 const cx = ring.reduce((s, [x]) => s + x, 0) / ring.length;
                 const cy = ring.reduce((s, [, y]) => s + y, 0) / ring.length;
@@ -130,23 +258,21 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         });
       })
       .catch(() => {
-        // Fallback: simple continent lines
         const fallbackMat = new THREE.LineBasicMaterial({ color: 0x2a6499, transparent: true, opacity: 0.7 });
         const continents = [
-          [[49,-125],[60,-140],[70,-160],[71,-155],[70,-140],[67,-135],[60,-115],[55,-80],[47,-60],[44,-65],[42,-70],[30,-82],[25,-80],[20,-90],[15,-90],[15,-85],[18,-88],[20,-97],[30,-115],[35,-120],[40,-124],[49,-125]],
-          [[12,-70],[8,-62],[5,-52],[0,-50],[-5,-35],[-10,-37],[-23,-42],[-33,-52],[-40,-62],[-50,-70],[-55,-68],[-55,-65],[-50,-65],[-40,-58],[-35,-57],[-30,-50],[-20,-40],[-13,-38],[-5,-35],[-2,-42],[0,-48],[5,-55],[8,-60],[10,-65],[12,-70]],
-          [[36,-5],[38,-5],[43,-9],[48,-5],[50,2],[53,5],[57,10],[60,5],[63,10],[70,20],[70,30],[60,30],[55,28],[47,30],[42,28],[37,25],[36,22],[38,15],[40,10],[43,5],[38,0],[36,-5]],
-          [[37,-5],[35,-1],[32,10],[33,12],[30,32],[22,37],[12,44],[2,42],[-5,40],[-10,40],[-15,35],[-25,33],[-30,30],[-35,20],[-34,18],[-30,17],[-20,13],[-10,14],[-5,12],[0,10],[5,1],[5,-5],[10,-15],[15,-17],[20,-17],[25,-15],[30,-10],[35,-5],[37,-5]],
-          [[42,28],[48,40],[40,50],[38,58],[25,62],[22,60],[15,55],[12,44],[22,37],[30,32],[33,36],[37,40],[42,50],[55,60],[55,70],[50,80],[42,75],[35,75],[25,68],[22,72],[22,80],[20,85],[22,88],[22,92],[20,95],[15,100],[5,105],[-5,110],[-8,115],[-7,120],[0,120],[5,115],[10,110],[15,108],[22,108],[25,105],[30,105],[35,110],[35,118],[38,118],[40,122],[42,130],[45,135],[48,140],[52,140],[55,135],[60,140],[63,140],[65,170],[68,180],[72,180],[75,140],[73,100],[70,70],[65,60],[60,60],[55,55],[48,40],[42,28]],
-          [[-12,130],[-15,125],[-20,118],[-25,114],[-30,115],[-35,117],[-35,138],[-37,140],[-38,146],[-35,150],[-30,153],[-25,152],[-20,148],[-15,145],[-12,142],[-10,135],[-12,130]],
+          [[49, -125], [60, -140], [70, -160], [71, -155], [70, -140], [67, -135], [60, -115], [55, -80], [47, -60], [44, -65], [42, -70], [30, -82], [25, -80], [20, -90], [15, -90], [15, -85], [18, -88], [20, -97], [30, -115], [35, -120], [40, -124], [49, -125]],
+          [[12, -70], [8, -62], [5, -52], [0, -50], [-5, -35], [-10, -37], [-23, -42], [-33, -52], [-40, -62], [-50, -70], [-55, -68], [-55, -65], [-50, -65], [-40, -58], [-35, -57], [-30, -50], [-20, -40], [-13, -38], [-5, -35], [-2, -42], [0, -48], [5, -55], [8, -60], [10, -65], [12, -70]],
+          [[36, -5], [38, -5], [43, -9], [48, -5], [50, 2], [53, 5], [57, 10], [60, 5], [63, 10], [70, 20], [70, 30], [60, 30], [55, 28], [47, 30], [42, 28], [37, 25], [36, 22], [38, 15], [40, 10], [43, 5], [38, 0], [36, -5]],
+          [[37, -5], [35, -1], [32, 10], [33, 12], [30, 32], [22, 37], [12, 44], [2, 42], [-5, 40], [-10, 40], [-15, 35], [-25, 33], [-30, 30], [-35, 20], [-34, 18], [-30, 17], [-20, 13], [-10, 14], [-5, 12], [0, 10], [5, 1], [5, -5], [10, -15], [15, -17], [20, -17], [25, -15], [30, -10], [35, -5], [37, -5]],
+          [[42, 28], [48, 40], [40, 50], [38, 58], [25, 62], [22, 60], [15, 55], [12, 44], [22, 37], [30, 32], [33, 36], [37, 40], [42, 50], [55, 60], [55, 70], [50, 80], [42, 75], [35, 75], [25, 68], [22, 72], [22, 80], [20, 85], [22, 88], [22, 92], [20, 95], [15, 100], [5, 105], [-5, 110], [-8, 115], [-7, 120], [0, 120], [5, 115], [10, 110], [15, 108], [22, 108], [25, 105], [30, 105], [35, 110], [35, 118], [38, 118], [40, 122], [42, 130], [45, 135], [48, 140], [52, 140], [55, 135], [60, 140], [63, 140], [65, 170], [68, 180], [72, 180], [75, 140], [73, 100], [70, 70], [65, 60], [60, 60], [55, 55], [48, 40], [42, 28]],
+          [[-12, 130], [-15, 125], [-20, 118], [-25, 114], [-30, 115], [-35, 117], [-35, 138], [-37, 140], [-38, 146], [-35, 150], [-30, 153], [-25, 152], [-20, 148], [-15, 145], [-12, 142], [-10, 135], [-12, 130]],
         ];
-        continents.forEach(pts => {
+        continents.forEach((pts) => {
           const points = pts.map(([lat, lng]) => latLngToVector3(lat, lng, 1.003));
           globeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), fallbackMat));
         });
       });
 
-    // ── Atmosphere glow ──
     const atmosphereMesh = new THREE.Mesh(
       new THREE.SphereGeometry(1.08, 64, 64),
       new THREE.ShaderMaterial({
@@ -169,15 +295,13 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
         transparent: true,
       })
     );
-    scene.add(atmosphereMesh); // NOT in globeGroup — atmosphere stays fixed
+    scene.add(atmosphereMesh);
 
-    // ── Lights ──
     scene.add(new THREE.AmbientLight(0x223355, 0.7));
     const sun = new THREE.DirectionalLight(0xaaccff, 0.9);
     sun.position.set(5, 3, 5);
     scene.add(sun);
 
-    // ── Stars ──
     const starPos = [];
     for (let i = 0; i < 3000; i++) {
       starPos.push((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200);
@@ -186,222 +310,180 @@ export default function EarthGlobe({ satellites = [], groupColors = {}, activeGr
     starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
     scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.15, transparent: true, opacity: 0.8 })));
 
-  }, []);
+    const frameCamera = ({ resetDistance }) => {
+      const view = containerRef.current;
+      const cam = cameraRef.current;
+      const orbit = controlsRef.current;
+      const gl = rendererRef.current;
+      if (!view || !cam || !orbit || !gl) return;
+      const w = view.clientWidth;
+      const h = view.clientHeight;
+      if (w < 2 || h < 2) return;
 
-  // Handle zoom button presses
-  useEffect(() => {
-    if (zoomDelta !== prevZoomDeltaRef.current) {
-      prevZoomDeltaRef.current = zoomDelta;
-      zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current + (zoomDelta > 0 ? -0.4 : 0.4)));
-    }
-  }, [zoomDelta]);
+      const isDesktop = w >= DESKTOP_MIN_WIDTH;
+      const rect = visibleGlobeRect(w, h, readChromeBounds(view), isDesktop);
+      const fit = fitCameraDistance(cam.fov, w, h, rect);
+      const limits = cameraDistanceLimits(fit);
+      fittedRef.current = limits.fit;
+      orbit.minDistance = limits.min;
+      orbit.maxDistance = limits.max;
 
-  // Update satellite positions
-  useEffect(() => {
-    if (!sceneRef.current || !globeGroupRef.current) return;
+      const offset = viewOffsetForRect(w, h, rect);
+      cam.aspect = w / h;
+      cam.setViewOffset(offset.fullWidth, offset.fullHeight, offset.offsetX, offset.offsetY, offset.width, offset.height);
+      gl.setSize(w, h);
 
-    // Remove old sat points from globe group
-    satellitePointsRef.current.forEach(pts => {
-      globeGroupRef.current.remove(pts);
-      pts.geometry.dispose();
-      pts.material.dispose();
-    });
-    satellitePointsRef.current = [];
-    satelliteDataRef.current = new Map();
-
-    const groupedSats = {};
-    satellites.forEach(sat => {
-      const group = sat.group || 'unknown';
-      if (!activeGroups.includes(group)) return;
-      if (!groupedSats[group]) groupedSats[group] = [];
-      groupedSats[group].push(sat);
-    });
-
-    const addPointCloud = (sats, size, color) => {
-      if (sats.length === 0) return;
-
-      const positions = [];
-      const colors = [];
-      sats.forEach(sat => {
-        const radius = 1.01 + (sat.altitude || 400) / 40000;
-        const vec = latLngToVector3(sat.lat, sat.lng, radius);
-        positions.push(vec.x, vec.y, vec.z);
-        colors.push(color.r, color.g, color.b);
-      });
-
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      const mat = new THREE.PointsMaterial({
-        vertexColors: true,
-        color: 0xffffff,
-        size,
-        transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      const pts = new THREE.Points(geo, mat);
-      globeGroupRef.current.add(pts);
-      satellitePointsRef.current.push(pts);
-      satelliteDataRef.current.set(pts, sats);
+      framingRef.current = true;
+      if (resetDistance || !distanceLockedRef.current) {
+        const dist = limits.fit;
+        if (resetDistance) {
+          cam.position.set(0, Math.sin(HOME_TILT_RAD) * dist, Math.cos(HOME_TILT_RAD) * dist);
+          distanceLockedRef.current = false;
+          if (!gyroRef.current && !focusKeyRef.current) orbit.autoRotate = true;
+        } else {
+          const direction = cam.position.clone();
+          if (direction.lengthSq() < 1e-6) direction.set(0, 0, 1);
+          cam.position.copy(direction.normalize().multiplyScalar(dist));
+        }
+      } else {
+        const current = cam.position.length();
+        const next = Math.min(limits.max, Math.max(limits.min, current));
+        if (current > 1e-6) cam.position.multiplyScalar(next / current);
+      }
+      orbit.target.set(0, 0, 0);
+      orbit.update();
+      framingRef.current = false;
     };
-
-    Object.entries(groupedSats).forEach(([group, sats]) => {
-      const groupColor = new THREE.Color(groupColors[group] || '#ffffff');
-      const baseSize = group === 'stations' ? 0.04 : 0.015;
-      const normalSats = sats.filter(sat => !sat.highlighted);
-      const highlightedSats = sats.filter(sat => sat.highlighted);
-
-      addPointCloud(normalSats, baseSize, groupColor);
-      addPointCloud(highlightedSats, baseSize * 2.3, new THREE.Color(1, 1, 1));
-    });
-  }, [satellites, groupColors, activeGroups]);
-
-  // Focus on selected satellite
-  useEffect(() => {
-    if (!focusSatellite || focusSatellite.lat == null) return;
-    const latRad = focusSatellite.lat * DEG2RAD;
-    const lngRad = focusSatellite.lng * DEG2RAD;
-    targetRotationRef.current.x = -latRad * 0.9;
-    targetRotationRef.current.y = -lngRad - Math.PI / 2;
-    zoomRef.current = 2.2;
-  }, [focusSatellite]);
-
-  // Animation loop
-  useEffect(() => {
-    initScene();
+    frameRef.current = frameCamera;
+    frameCamera({ resetDistance: true });
+    rebuildPoints();
 
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
-
-      if (!mouseRef.current.isDragging) {
-        const gyro = gyroRotationRef.current;
-        if (gyro) {
-          targetRotationRef.current.x = gyro.x;
-          targetRotationRef.current.y = gyro.y;
-        } else {
-          targetRotationRef.current.y += 0.001;
-        }
+      const gyro = gyroRef.current;
+      if (gyro && globeGroupRef.current) {
+        globeGroupRef.current.rotation.x = gyro.x;
+        globeGroupRef.current.rotation.y = gyro.y;
       }
-
-      rotationRef.current.x += (targetRotationRef.current.x - rotationRef.current.x) * 0.05;
-      rotationRef.current.y += (targetRotationRef.current.y - rotationRef.current.y) * 0.05;
-
-      if (globeGroupRef.current) {
-        globeGroupRef.current.rotation.x = rotationRef.current.x;
-        globeGroupRef.current.rotation.y = rotationRef.current.y;
-      }
-
-      if (cameraRef.current) {
-        cameraRef.current.position.z += (zoomRef.current - cameraRef.current.position.z) * 0.05;
-      }
-
-      if (rendererRef.current && sceneRef.current && cameraRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current);
-      }
+      controls.target.set(0, 0, 0);
+      controls.update();
+      renderer.render(scene, camera);
     };
-
     animate();
 
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (rendererRef.current && containerRef.current) {
-        try { containerRef.current.removeChild(rendererRef.current.domElement); } catch {}
-        rendererRef.current.dispose();
+    let layoutKey = '';
+    const watchLayout = () => {
+      const view = containerRef.current;
+      if (!view) return;
+      const bounds = readChromeBounds(view);
+      const key = `${view.clientWidth}x${view.clientHeight}:${bounds.panelRight}:${bounds.zoomLeft}:${bounds.timebarTop}`;
+      if (key === layoutKey) return;
+      layoutKey = key;
+      frameCamera({ resetDistance: false });
+    };
+    const resizeObserver = new ResizeObserver(watchLayout);
+    resizeObserver.observe(container);
+    document.querySelectorAll('[data-view-obstruction]').forEach((el) => resizeObserver.observe(el));
+    const mutationObserver = new MutationObserver(() => {
+      document.querySelectorAll('[data-view-obstruction]').forEach((el) => resizeObserver.observe(el));
+      watchLayout();
+    });
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', watchLayout);
+
+    let pointerStart = null;
+    const onPointerDown = (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      pointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const onPointerUp = (event) => {
+      if (!pointerStart) return;
+      const dx = event.clientX - pointerStart.x;
+      const dy = event.clientY - pointerStart.y;
+      pointerStart = null;
+      if (dx * dx + dy * dy > 9) return;
+      const click = propsRef.current.onSatelliteClick;
+      if (!click || !cameraRef.current) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      const raycaster = new THREE.Raycaster();
+      raycaster.params.Points.threshold = 0.02 * (camera.position.length() / 3);
+      camera.updateMatrixWorld();
+      raycaster.setFromCamera({ x, y }, camera);
+      const intersects = raycaster.intersectObjects(satellitePointsRef.current);
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        const satData = satelliteDataRef.current.get(hit.object)?.[hit.index];
+        click(satData ? { ...satData, group: satData.group } : null);
+      } else {
+        click(null);
       }
     };
-  }, [initScene]);
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
 
-  // Mouse / touch / resize events
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', watchLayout);
+      renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      controls.dispose();
+      controlsRef.current = null;
+      frameRef.current = null;
+      if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+      renderer.dispose();
+    };
+  }, [rebuildPoints]);
+
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    rebuildPoints();
+  }, [satellites, groupColors, activeGroups, rebuildPoints]);
 
-    const onDown  = (e) => {
-      mouseRef.current.isDragging = false;
-      mouseRef.current.hasMoved = false;
-      mouseRef.current.prevX = e.clientX;
-      mouseRef.current.prevY = e.clientY;
-      mouseRef.current.isDown = true;
-    };
-    const onUp = (e) => {
-      mouseRef.current.isDown = false;
-      if (!mouseRef.current.hasMoved && onSatelliteClick) {
-        // Raycast to find nearest satellite point
-        const rect = container.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-        const raycaster = new THREE.Raycaster();
-        raycaster.params.Points.threshold = 0.03;
-        raycaster.setFromCamera({ x, y }, cameraRef.current);
-        const pts = satellitePointsRef.current;
-        const intersects = raycaster.intersectObjects(pts);
-        if (intersects.length > 0) {
-          const hit = intersects[0];
-          const satData = satelliteDataRef.current.get(hit.object)?.[hit.index];
-          if (satData) onSatelliteClick({ ...satData, group: satData.group });
-        } else {
-          onSatelliteClick(null);
-        }
-      }
-      mouseRef.current.isDragging = false;
-    };
-    const onMove  = (e) => {
-      if (!mouseRef.current.isDown) return;
-      const dx = e.clientX - mouseRef.current.prevX;
-      const dy = e.clientY - mouseRef.current.prevY;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-        mouseRef.current.hasMoved = true;
-        mouseRef.current.isDragging = true;
-      }
-      targetRotationRef.current.y += dx * 0.005;
-      targetRotationRef.current.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, targetRotationRef.current.x + dy * 0.005));
-      mouseRef.current.prevX = e.clientX;
-      mouseRef.current.prevY = e.clientY;
-    };
-    const onWheel = (e) => { e.preventDefault(); zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current + e.deltaY * 0.002)); };
-    let lastPinchDist = null;
-    const onTouchStart = (e) => {
-      if (e.touches.length === 1) onDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
-      if (e.touches.length === 2) lastPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-    };
-    const onTouchMove  = (e) => {
-      if (e.touches.length === 1) onMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
-      if (e.touches.length === 2 && lastPinchDist !== null) {
-        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-        zoomRef.current = Math.max(1.5, Math.min(6, zoomRef.current - (dist - lastPinchDist) * 0.01));
-        lastPinchDist = dist;
-      }
-    };
-    const onResize = () => {
-      if (!rendererRef.current || !cameraRef.current || !containerRef.current) return;
-      const w = containerRef.current.clientWidth, h = containerRef.current.clientHeight;
-      cameraRef.current.aspect = w / h;
-      cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(w, h);
-    };
+  useEffect(() => {
+    if (zoomDelta === prevZoomDeltaRef.current) return;
+    const zoomIn = zoomDelta > prevZoomDeltaRef.current;
+    prevZoomDeltaRef.current = zoomDelta;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const distance = camera.position.length() || fittedRef.current;
+    const next = Math.min(controls.maxDistance, Math.max(controls.minDistance, distance * (zoomIn ? 0.82 : 1.22)));
+    camera.position.multiplyScalar(next / distance);
+    distanceLockedRef.current = true;
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }, [zoomDelta]);
 
-    container.addEventListener('mousedown', onDown);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    container.addEventListener('wheel', onWheel, { passive: false });
-    container.addEventListener('touchstart', onTouchStart);
-    container.addEventListener('touchmove', onTouchMove);
-    container.addEventListener('touchend', onUp);
-    window.addEventListener('resize', onResize);
+  const focusRef = useRef(focusSatellite);
+  focusRef.current = focusSatellite;
+  const focusKey = focusSatellite?.name ? `${focusSatellite.group}:${focusSatellite.name}` : '';
+  useEffect(() => {
+    focusKeyRef.current = focusKey;
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const sat = focusRef.current;
+    if (!camera || !controls) return;
+    if (!focusKey || sat?.lat == null || gyroRef.current) {
+      if (!gyroRef.current) controls.autoRotate = true;
+      return;
+    }
+    const direction = latLngToVector3(sat.lat, sat.lng, 1).normalize();
+    const distance = Math.max(controls.minDistance, Math.min(fittedRef.current * 0.62, controls.maxDistance));
+    camera.position.copy(direction.multiplyScalar(distance));
+    distanceLockedRef.current = true;
+    controls.autoRotate = false;
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }, [focusKey]);
 
-    return () => {
-      container.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      container.removeEventListener('wheel', onWheel);
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onUp);
-      window.removeEventListener('resize', onResize);
-    };
-  }, []);
+  useEffect(() => {
+    if (viewResetSeenRef.current === viewResetToken) return;
+    viewResetSeenRef.current = viewResetToken;
+    frameRef.current?.({ resetDistance: true });
+  }, [viewResetToken]);
 
   return (
     <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }} />

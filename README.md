@@ -30,9 +30,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Deployment
 
-Production runs on **Cloudflare Workers** as a static-asset Worker, served at [https://starlit.youneek.dev/](https://starlit.youneek.dev/).
+Production runs on **Cloudflare Workers** as a static-asset Worker with a small API script, served at [https://starlit.youneek.dev/](https://starlit.youneek.dev/).
 
-The repository ships a `wrangler.jsonc` that deploys the Vite build output (`dist/`) as a Workers static-asset site with single-page-application routing (`not_found_handling = "single-page-application"`), so React Router works at the domain root. Deploy with:
+The repository ships a `wrangler.jsonc` that deploys the Vite build output (`dist/`) as Workers static assets with single-page-application routing (`not_found_handling = "single-page-application"`), so React Router works at the domain root. `worker/index.js` serves `GET /api/tle?group=` for the six groups (Starlink, stations, active, GPS, weather, science). It fetches public CelesTrak TLE data — no API key — caches each group for about two hours in the [Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/), and serves the last cached copy if CelesTrak fails. `/api/*` runs the Worker first; every other path is a static asset. Deploy with:
 
 ```bash
 npm run deploy
@@ -40,7 +40,7 @@ npm run deploy
 
 This builds the app and runs `wrangler deploy` using the `starlit-tracker` Worker config. DNS and the `starlit.youneek.dev` custom domain are configured separately in the Cloudflare dashboard — nothing in this repo creates or changes DNS records.
 
-A GitHub Pages workflow (`.github/workflows/pages.yml`) is still available as a mirror deployment; it builds with `GITHUB_PAGES=true` so asset URLs are prefixed with `/youneek-satellite-tracker/`.
+A GitHub Pages workflow (`.github/workflows/pages.yml`) is still available as a mirror of the static build. It does not run the Worker, so satellite groups load from the Cloudflare deployment, not from the Pages URL.
 
 ## Tech Stack
 

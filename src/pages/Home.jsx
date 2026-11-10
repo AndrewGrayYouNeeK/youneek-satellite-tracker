@@ -9,12 +9,12 @@ import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 import { Loader2 } from 'lucide-react';
 
-const MAX_SATS_PER_GROUP = 10000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
   const [zoomDelta, setZoomDelta] = useState(0);
+  const [viewResetToken, setViewResetToken] = useState(0);
   const [selectedSat, setSelectedSat] = useState(null);
   const [highlightedSat, setHighlightedSat] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,30 +27,62 @@ export default function Home() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadErrors, setLoadErrors] = useState({});
   const tleCache = useRef({});
+  const failedGroups = useRef(new Set());
+  const forceLoad = useRef(new Set());
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const [simTime, setSimTime] = useState(Date.now());
   const [isPlaying, setIsPlaying] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1);
   const simRef = useRef({ time: Date.now(), speed: 1, playing: false });
+  const activeGroupsRef = useRef(activeGroups);
+  activeGroupsRef.current = activeGroups;
 
   const loadGroup = useCallback(async (groupKey) => {
-    if (tleCache.current[groupKey]) return tleCache.current[groupKey];
+    const force = forceLoad.current.has(groupKey);
+    if (force) forceLoad.current.delete(groupKey);
+    if (!force && tleCache.current[groupKey]) return tleCache.current[groupKey];
+    if (!force && failedGroups.current.has(groupKey)) return null;
 
     setLoading(prev => ({ ...prev, [groupKey]: true }));
     setLoadErrors(prev => ({ ...prev, [groupKey]: null }));
     try {
       const rawTLE = await fetchSatelliteGroup(groupKey);
       const tles = parseTLEData(rawTLE);
+      if (tles.length === 0) throw new Error('Could not load this group');
       tleCache.current[groupKey] = tles;
+      failedGroups.current.delete(groupKey);
       setSatelliteCounts(prev => ({ ...prev, [groupKey]: tles.length }));
       return tles;
     } catch (err) {
-      console.error(`Failed to load ${groupKey}:`, err);
-      setLoadErrors(prev => ({ ...prev, [groupKey]: err.message || 'Failed to load' }));
-      return [];
+      console.error(JSON.stringify({ event: 'group_load_failed', group: groupKey, message: err.message }));
+      delete tleCache.current[groupKey];
+      failedGroups.current.add(groupKey);
+      setLoadErrors(prev => ({ ...prev, [groupKey]: err.message || 'Could not load this group' }));
+      setSatelliteCounts(prev => ({ ...prev, [groupKey]: 0 }));
+      return null;
     } finally {
       setLoading(prev => ({ ...prev, [groupKey]: false }));
     }
+  }, []);
+
+  const updatePositions = useCallback(() => {
+    const date = new Date(simRef.current.time);
+    const allPositions = [];
+    for (const groupKey of activeGroupsRef.current) {
+      const tles = tleCache.current[groupKey];
+      if (!tles) continue;
+      const positions = getSatellitePositions(tles, date);
+      positions.forEach(p => { p.group = groupKey; });
+      allPositions.push(...positions);
+    }
+    setSatellites(allPositions);
+    const match = (prev) => {
+      if (!prev) return prev;
+      return allPositions.find((sat) => sat.name === prev.name && sat.group === prev.group) || prev;
+    };
+    setSelectedSat(match);
+    setHighlightedSat(match);
   }, []);
 
   useEffect(() => {
@@ -62,14 +94,18 @@ export default function Home() {
     let raf;
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
-      const { playing, speed, time } = simRef.current;
-      if (!playing) return;
-      const dt = now - lastTick;
+      if (!simRef.current.playing) {
+        lastTick = now;
+        return;
+      }
+      const dt = Math.min(1000, Math.max(0, now - lastTick));
       lastTick = now;
+      const { speed, time } = simRef.current;
       const newTime = time + dt * speed;
       const startOfDay = new Date();
       startOfDay.setUTCHours(0, 0, 0, 0);
-      const looped = startOfDay.getTime() + ((newTime - startOfDay.getTime()) % DAY_MS);
+      const elapsed = newTime - startOfDay.getTime();
+      const looped = startOfDay.getTime() + ((elapsed % DAY_MS) + DAY_MS) % DAY_MS;
       simRef.current.time = looped;
       setSimTime(looped);
     };
@@ -79,40 +115,25 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    (async () => {
+      await Promise.all(activeGroups.map((groupKey) => loadGroup(groupKey)));
+      if (cancelled) return;
+      updatePositions();
+      setInitialLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [activeGroups, loadGroup, retryNonce, updatePositions]);
 
-    async function updatePositions() {
-      const allPositions = [];
-      const date = new Date(simRef.current.time);
-
-      for (const groupKey of activeGroups) {
-        const tles = await loadGroup(groupKey);
-        if (cancelled) return;
-
-        let sampled = tles;
-        if (tles.length > MAX_SATS_PER_GROUP) {
-          const step = Math.ceil(tles.length / MAX_SATS_PER_GROUP);
-          sampled = tles.filter((_, i) => i % step === 0);
-        }
-
-        const positions = getSatellitePositions(sampled, date);
-        positions.forEach(p => { p.group = groupKey; });
-        allPositions.push(...positions);
-      }
-
-      if (!cancelled) {
-        setSatellites(allPositions);
-        setInitialLoading(false);
-      }
-    }
-
+  useEffect(() => {
+    if (isPlaying) return;
     updatePositions();
-    const interval = setInterval(updatePositions, isPlaying ? 500 : 5000);
+  }, [simTime, isPlaying, updatePositions]);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [activeGroups, loadGroup, isPlaying]);
+  useEffect(() => {
+    if (!isPlaying) return undefined;
+    const interval = setInterval(updatePositions, 500);
+    return () => clearInterval(interval);
+  }, [isPlaying, updatePositions]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) return [];
@@ -168,11 +189,23 @@ export default function Home() {
   }, [isAR]);
 
   const handleToggleGroup = useCallback((groupKey) => {
-    setActiveGroups(prev =>
-      prev.includes(groupKey)
-        ? prev.filter(g => g !== groupKey)
-        : [...prev, groupKey]
-    );
+    setActiveGroups(prev => {
+      if (prev.includes(groupKey)) return prev.filter(g => g !== groupKey);
+      if (failedGroups.current.has(groupKey)) {
+        failedGroups.current.delete(groupKey);
+        forceLoad.current.add(groupKey);
+      }
+      return [...prev, groupKey];
+    });
+  }, []);
+
+  const handleRetryGroup = useCallback((groupKey) => {
+    failedGroups.current.delete(groupKey);
+    delete tleCache.current[groupKey];
+    forceLoad.current.add(groupKey);
+    setLoadErrors(prev => ({ ...prev, [groupKey]: null }));
+    setActiveGroups(prev => (prev.includes(groupKey) ? prev : [...prev, groupKey]));
+    setRetryNonce(n => n + 1);
   }, []);
 
   const handleTimeScrub = useCallback((progress) => {
@@ -181,12 +214,16 @@ export default function Home() {
     const newTime = startOfDay.getTime() + (progress / 100) * DAY_MS;
     setSimTime(newTime);
     simRef.current.time = newTime;
-  }, []);
+    updatePositions();
+  }, [updatePositions]);
 
-  const groupColors = {};
-  Object.entries(SATELLITE_GROUPS).forEach(([key, group]) => {
-    groupColors[key] = group.color;
-  });
+  const groupColors = useMemo(() => {
+    const colors = {};
+    Object.entries(SATELLITE_GROUPS).forEach(([key, group]) => {
+      colors[key] = group.color;
+    });
+    return colors;
+  }, []);
 
   const totalCount = Object.entries(satelliteCounts)
     .filter(([key]) => activeGroups.includes(key))
@@ -221,6 +258,7 @@ export default function Home() {
         }}
         gyroRotation={gyroRotation}
         focusSatellite={highlightedSat}
+        viewResetToken={viewResetToken}
       />
 
       <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
@@ -230,6 +268,7 @@ export default function Home() {
           <ZoomControls
             onZoomIn={() => setZoomDelta(d => d + 1)}
             onZoomOut={() => setZoomDelta(d => d - 1)}
+            onResetView={() => setViewResetToken(token => token + 1)}
           />
           <SatellitePanel
             activeGroups={activeGroups}
@@ -242,6 +281,7 @@ export default function Home() {
             onSearchChange={setSearchQuery}
             searchResults={searchResults}
             onSelectSearchResult={handleSelectSearchResult}
+            onRetryGroup={handleRetryGroup}
           />
           <SatelliteInfoPanel
             satellite={selectedSat}
