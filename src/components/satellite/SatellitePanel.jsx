@@ -14,11 +14,12 @@ export default function SatellitePanel({
   onSearchChange,
   searchResults,
   onSelectSearchResult,
+  onRetryGroup,
 }) {
   const [groupsVisible, setGroupsVisible] = useState(true);
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-64 md:w-72" style={{ maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
+    <div data-view-obstruction="panel" className="absolute top-4 left-4 z-10 w-64 md:w-72" style={{ maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
       <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl p-4 mb-3 shadow-2xl">
         <div className="flex items-center gap-3 mb-1">
           <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
@@ -108,9 +109,22 @@ export default function SatellitePanel({
                         {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                         {error && <AlertCircle className="w-3 h-3 text-destructive" title={error} />}
                       </div>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {error ? 'Load failed' : count > 0 ? `${count.toLocaleString()} objects` : 'Not loaded'}
-                      </span>
+                      {error ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-destructive font-mono" title={error}>Could not load this group</span>
+                          <button
+                            type="button"
+                            onClick={() => onRetryGroup?.(key)}
+                            className="text-[10px] font-semibold text-primary hover:underline shrink-0"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {isLoading ? 'Loading…' : count > 0 ? `${count.toLocaleString()} objects` : 'Not loaded'}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <Switch
