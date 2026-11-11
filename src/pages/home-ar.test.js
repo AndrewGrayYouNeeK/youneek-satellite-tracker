@@ -27,6 +27,16 @@ globalThis.self = dom;
 for (const name of globals) {
   if (dom[name] !== undefined) globalThis[name] = dom[name];
 }
+// CI runs Node 20, which has no global navigator. React DOM reads
+// navigator.userAgent while it loads. Node 22 already provides one and
+// does not allow replacing it.
+if (globalThis.navigator == null) {
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: dom.navigator,
+  });
+}
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let rafId = 0;
