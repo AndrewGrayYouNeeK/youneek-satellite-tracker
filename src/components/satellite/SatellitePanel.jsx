@@ -19,8 +19,8 @@ export default function SatellitePanel({
   const [groupsVisible, setGroupsVisible] = useState(true);
 
   return (
-    <div data-view-obstruction="panel" className="absolute top-4 left-4 z-10 w-64 md:w-72" style={{ maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
-      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl p-4 mb-3 shadow-2xl">
+    <div data-view-obstruction="panel" className="pointer-events-none absolute top-4 left-4 z-10 w-64 md:w-72" style={{ maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
+      <div className="pointer-events-auto bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl p-4 mb-3 shadow-2xl">
         <div className="flex items-center gap-3 mb-1">
           <div className="p-2 rounded-lg bg-primary/10 border border-primary/20">
             <Satellite className="w-5 h-5 text-primary" />
@@ -38,7 +38,7 @@ export default function SatellitePanel({
         </div>
       </div>
 
-      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl mb-3 p-3">
+      <div className="pointer-events-auto bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl mb-3 p-3">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input
@@ -67,7 +67,7 @@ export default function SatellitePanel({
         )}
       </div>
 
-      <div className="bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden" style={{ overflowY: 'auto' }}>
+      <div className="pointer-events-auto bg-card/80 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden" style={{ overflowY: 'auto' }}>
         <button
           onClick={() => setGroupsVisible(v => !v)}
           className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors"

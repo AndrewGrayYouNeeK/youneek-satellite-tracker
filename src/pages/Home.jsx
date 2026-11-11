@@ -1,15 +1,23 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import SkyARView from '@/components/ar/SkyARView';
 import EarthGlobe from '@/components/globe/EarthGlobe';
 import SatellitePanel from '@/components/satellite/SatellitePanel';
 import ZoomControls from '@/components/satellite/ZoomControls';
 import SatelliteInfoPanel from '@/components/satellite/SatelliteInfoPanel';
 import ARModeButton from '@/components/satellite/ARModeButton';
 import TimeControls from '@/components/satellite/TimeControls';
+import {
+  createSkyArController,
+  readOrientationPermission,
+  requestEnvironmentCamera,
+} from '@/lib/ar-session';
 import { SATELLITE_GROUPS, fetchSatelliteGroup } from '@/lib/satellite-data';
+import { trackerChrome } from '@/lib/tracker-chrome';
 import { parseTLEData, getSatellitePositions } from '@/lib/tle-parser';
 import { Loader2 } from 'lucide-react';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SKY_LOOK = { heading: 0, tilt: 45, roll: 0 };
 
 export default function Home() {
   const [activeGroups, setActiveGroups] = useState(['starlink', 'stations']);
@@ -18,9 +26,14 @@ export default function Home() {
   const [selectedSat, setSelectedSat] = useState(null);
   const [highlightedSat, setHighlightedSat] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAR, setIsAR] = useState(false);
-  const [gyroRotation, setGyroRotation] = useState(null);
-  const gyroBaseRef = useRef(null);
+  const [trackerMode, setTrackerMode] = useState('globe');
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraSettled, setCameraSettled] = useState(false);
+  const [orientationLive, setOrientationLive] = useState(false);
+  const [orientationDenied, setOrientationDenied] = useState(false);
+  const orientationRef = useRef({ ...SKY_LOOK });
+  const orientationLiveRef = useRef(false);
+  const controllerRef = useRef(null);
   const [satellites, setSatellites] = useState([]);
   const [satelliteCounts, setSatelliteCounts] = useState({});
   const [loading, setLoading] = useState({});
@@ -37,6 +50,93 @@ export default function Home() {
   const simRef = useRef({ time: Date.now(), speed: 1, playing: false });
   const activeGroupsRef = useRef(activeGroups);
   activeGroupsRef.current = activeGroups;
+
+  const ensureController = useCallback(() => {
+    if (controllerRef.current) return controllerRef.current;
+    controllerRef.current = createSkyArController({
+      addOrientationListener(handler) {
+        window.addEventListener('deviceorientationabsolute', handler, true);
+        window.addEventListener('deviceorientation', handler);
+      },
+      removeOrientationListener(handler) {
+        window.removeEventListener('deviceorientationabsolute', handler, true);
+        window.removeEventListener('deviceorientation', handler);
+      },
+      requestFullscreen() {
+        const node = document.documentElement;
+        if (typeof node.requestFullscreen !== 'function') return;
+        Promise.resolve(node.requestFullscreen()).catch(() => {});
+      },
+      exitFullscreen() {
+        if (!document.fullscreenElement || typeof document.exitFullscreen !== 'function') return;
+        Promise.resolve(document.exitFullscreen()).catch(() => {});
+      },
+    });
+    return controllerRef.current;
+  }, []);
+
+  useEffect(() => () => controllerRef.current?.stop(), []);
+
+  const leaveSkyAr = useCallback(() => {
+    ensureController().stop();
+    orientationLiveRef.current = false;
+    orientationRef.current = { ...SKY_LOOK };
+    setTrackerMode('globe');
+    setCameraStream(null);
+    setCameraSettled(false);
+    setOrientationLive(false);
+    setOrientationDenied(false);
+  }, [ensureController]);
+
+  const handleToggleAR = useCallback(() => {
+    const controller = ensureController();
+    if (controller.isActive()) {
+      leaveSkyAr();
+      return;
+    }
+
+    // iOS only grants motion and camera access when the requests start in
+    // this click. Do not await before these two calls.
+    const orientationPermission = readOrientationPermission();
+    const cameraPromise = requestEnvironmentCamera();
+    orientationLiveRef.current = false;
+    orientationRef.current = { ...SKY_LOOK };
+    setOrientationLive(false);
+    setOrientationDenied(false);
+    setCameraStream(null);
+    setCameraSettled(false);
+    setTrackerMode('sky-ar');
+    controller.start({
+      orientationPermission,
+      cameraPromise,
+      onOrientation({ granted, sample }) {
+        if (!controller.isActive()) return;
+        if (sample) {
+          orientationRef.current = sample;
+          if (!orientationLiveRef.current) {
+            orientationLiveRef.current = true;
+            setOrientationLive(true);
+          }
+          return;
+        }
+        if (!granted) setOrientationDenied(true);
+      },
+      onCamera(stream) {
+        if (!controller.isActive()) return;
+        setCameraStream(stream);
+        setCameraSettled(true);
+      },
+    });
+  }, [ensureController, leaveSkyAr]);
+
+  useEffect(() => {
+    if (trackerMode !== 'sky-ar') return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') leaveSkyAr();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [trackerMode, leaveSkyAr]);
 
   const loadGroup = useCallback(async (groupKey) => {
     const force = forceLoad.current.has(groupKey);
@@ -149,45 +249,6 @@ export default function Home() {
     setSearchQuery('');
   }, []);
 
-  const handleToggleAR = useCallback(() => {
-    if (!isAR) {
-      document.documentElement.requestFullscreen?.();
-      gyroBaseRef.current = null;
-
-      const handleOrientation = (e) => {
-        const alpha = (e.alpha ?? 0) * Math.PI / 180;
-        const beta  = (e.beta  ?? 0) * Math.PI / 180;
-        if (!gyroBaseRef.current) gyroBaseRef.current = { alpha, beta };
-        let dy = alpha - gyroBaseRef.current.alpha;
-        if (dy > Math.PI) dy -= 2 * Math.PI;
-        if (dy < -Math.PI) dy += 2 * Math.PI;
-        setGyroRotation({
-          x: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, (beta - gyroBaseRef.current.beta) * 0.5)),
-          y: dy,
-        });
-      };
-
-      if (typeof DeviceOrientationEvent?.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().then(state => {
-          if (state === 'granted') window.addEventListener('deviceorientation', handleOrientation);
-        });
-      } else {
-        window.addEventListener('deviceorientation', handleOrientation);
-      }
-      window._arOrientationHandler = handleOrientation;
-      setIsAR(true);
-    } else {
-      document.exitFullscreen?.();
-      if (window._arOrientationHandler) {
-        window.removeEventListener('deviceorientation', window._arOrientationHandler);
-        window._arOrientationHandler = null;
-      }
-      setGyroRotation(null);
-      gyroBaseRef.current = null;
-      setIsAR(false);
-    }
-  }, [isAR]);
-
   const handleToggleGroup = useCallback((groupKey) => {
     setActiveGroups(prev => {
       if (prev.includes(groupKey)) return prev.filter(g => g !== groupKey);
@@ -238,8 +299,20 @@ export default function Home() {
     );
   }, [satellites, highlightedSat]);
 
+  const chrome = trackerChrome(trackerMode);
+  const timeControlProps = {
+    simTime,
+    isPlaying,
+    speed: simSpeed,
+    totalCount,
+    onTogglePlay: () => setIsPlaying(playing => !playing),
+    onReset: () => { setSimTime(Date.now()); simRef.current.time = Date.now(); setIsPlaying(false); },
+    onSpeedChange: setSimSpeed,
+    onTimeScrub: handleTimeScrub,
+  };
+
   return (
-    <div className={`fixed inset-0 bg-background overflow-hidden ${isAR ? 'bg-black' : ''}`}>
+    <div className="fixed inset-0 bg-background overflow-hidden">
       {initialLoading && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
           <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
@@ -247,23 +320,22 @@ export default function Home() {
         </div>
       )}
 
-      <EarthGlobe
-        satellites={visibleSatellites}
-        groupColors={groupColors}
-        activeGroups={activeGroups}
-        zoomDelta={zoomDelta}
-        onSatelliteClick={(sat) => {
-          setSelectedSat(sat);
-          setHighlightedSat(sat);
-        }}
-        gyroRotation={gyroRotation}
-        focusSatellite={highlightedSat}
-        viewResetToken={viewResetToken}
-      />
+      <div className={`absolute inset-0 ${chrome.skyAr ? 'pointer-events-none' : ''}`} aria-hidden={chrome.skyAr ? true : undefined}>
+        <EarthGlobe
+          satellites={visibleSatellites}
+          groupColors={groupColors}
+          activeGroups={activeGroups}
+          zoomDelta={zoomDelta}
+          onSatelliteClick={(sat) => {
+            setSelectedSat(sat);
+            setHighlightedSat(sat);
+          }}
+          focusSatellite={highlightedSat}
+          viewResetToken={viewResetToken}
+        />
+      </div>
 
-      <ARModeButton isAR={isAR} onToggle={handleToggleAR} />
-
-      {!isAR && (
+      {chrome.panels && (
         <>
           <ZoomControls
             onZoomIn={() => setZoomDelta(d => d + 1)}
@@ -290,17 +362,25 @@ export default function Home() {
               setHighlightedSat(null);
             }}
           />
-          <TimeControls
-            simTime={simTime}
-            isPlaying={isPlaying}
-            speed={simSpeed}
-            totalCount={totalCount}
-            onTogglePlay={() => setIsPlaying(p => !p)}
-            onReset={() => { setSimTime(Date.now()); simRef.current.time = Date.now(); setIsPlaying(false); }}
-            onSpeedChange={(s) => setSimSpeed(s)}
-            onTimeScrub={handleTimeScrub}
-          />
         </>
+      )}
+
+      {chrome.timeBar && <TimeControls variant="bar" {...timeControlProps} />}
+
+      {!chrome.skyAr && <ARModeButton isAR={false} onToggle={handleToggleAR} />}
+
+      {chrome.skyAr && (
+        <SkyARView
+          satellites={visibleSatellites}
+          groupColors={groupColors}
+          cameraStream={cameraStream}
+          cameraSettled={cameraSettled}
+          orientationRef={orientationRef}
+          orientationLive={orientationLive}
+          orientationDenied={orientationDenied}
+          onClose={leaveSkyAr}
+          {...timeControlProps}
+        />
       )}
     </div>
   );
