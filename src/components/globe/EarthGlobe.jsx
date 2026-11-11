@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { applyGlobeInteraction } from '@/lib/globe-interaction';
 import {
   DESKTOP_MIN_WIDTH,
   HOME_TILT_RAD,
@@ -45,7 +46,6 @@ export default function EarthGlobe({
   activeGroups = [],
   zoomDelta = 0,
   onSatelliteClick,
-  gyroRotation = null,
   focusSatellite = null,
   viewResetToken = 0,
 }) {
@@ -62,7 +62,6 @@ export default function EarthGlobe({
   const distanceLockedRef = useRef(false);
   const framingRef = useRef(false);
   const frameRef = useRef(null);
-  const gyroRef = useRef(gyroRotation);
   const focusKeyRef = useRef('');
   const prevZoomDeltaRef = useRef(0);
   const viewResetSeenRef = useRef(viewResetToken);
@@ -127,20 +126,6 @@ export default function EarthGlobe({
   }, []);
 
   useEffect(() => {
-    gyroRef.current = gyroRotation;
-    const controls = controlsRef.current;
-    if (!controls) return;
-    if (gyroRotation) {
-      controls.enabled = false;
-      controls.autoRotate = false;
-    } else {
-      controls.enabled = true;
-      if (globeGroupRef.current) globeGroupRef.current.rotation.set(0, 0, 0);
-      if (!focusKeyRef.current) controls.autoRotate = true;
-    }
-  }, [gyroRotation]);
-
-  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
@@ -155,7 +140,16 @@ export default function EarthGlobe({
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    } catch (err) {
+      console.error(JSON.stringify({
+        event: 'globe_init_failed',
+        message: err instanceof Error ? err.message : String(err),
+      }));
+      return undefined;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
@@ -163,6 +157,8 @@ export default function EarthGlobe({
     rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
+    applyGlobeInteraction(controls, null);
+    containerRef.current?.setAttribute('data-orbit-controls', controls.enabled ? 'enabled' : 'disabled');
     controls.target.set(0, 0, 0);
     controls.enablePan = false;
     controls.enableDamping = true;
@@ -179,7 +175,7 @@ export default function EarthGlobe({
       controls.autoRotate = false;
     });
     controls.addEventListener('end', () => {
-      if (!gyroRef.current && !focusKeyRef.current) controls.autoRotate = true;
+      if (!focusKeyRef.current) controls.autoRotate = true;
     });
     controls.addEventListener('change', () => {
       if (framingRef.current) return;
@@ -339,7 +335,7 @@ export default function EarthGlobe({
         if (resetDistance) {
           cam.position.set(0, Math.sin(HOME_TILT_RAD) * dist, Math.cos(HOME_TILT_RAD) * dist);
           distanceLockedRef.current = false;
-          if (!gyroRef.current && !focusKeyRef.current) orbit.autoRotate = true;
+          if (!focusKeyRef.current) orbit.autoRotate = true;
         } else {
           const direction = cam.position.clone();
           if (direction.lengthSq() < 1e-6) direction.set(0, 0, 1);
@@ -360,11 +356,6 @@ export default function EarthGlobe({
 
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
-      const gyro = gyroRef.current;
-      if (gyro && globeGroupRef.current) {
-        globeGroupRef.current.rotation.x = gyro.x;
-        globeGroupRef.current.rotation.y = gyro.y;
-      }
       controls.target.set(0, 0, 0);
       controls.update();
       renderer.render(scene, camera);
@@ -466,8 +457,10 @@ export default function EarthGlobe({
     const controls = controlsRef.current;
     const sat = focusRef.current;
     if (!camera || !controls) return;
-    if (!focusKey || sat?.lat == null || gyroRef.current) {
-      if (!gyroRef.current) controls.autoRotate = true;
+    applyGlobeInteraction(controls, null);
+    containerRef.current?.setAttribute('data-orbit-controls', controls.enabled ? 'enabled' : 'disabled');
+    if (!focusKey || sat?.lat == null) {
+      controls.autoRotate = true;
       return;
     }
     const direction = latLngToVector3(sat.lat, sat.lng, 1).normalize();
@@ -486,6 +479,6 @@ export default function EarthGlobe({
   }, [viewResetToken]);
 
   return (
-    <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }} />
+    <div ref={containerRef} data-orbit-controls="enabled" className="w-full h-full cursor-grab active:cursor-grabbing" style={{ touchAction: 'none' }} />
   );
 }

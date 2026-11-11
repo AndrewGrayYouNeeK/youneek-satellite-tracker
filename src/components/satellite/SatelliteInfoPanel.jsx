@@ -18,7 +18,7 @@ export default function SatelliteInfoPanel({ satellite, onClose }) {
   const groupColor = group?.color || '#ffffff';
 
   return (
-    <div className="absolute bottom-24 right-16 z-20 w-72 bg-card/90 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200">
+    <div className="pointer-events-auto absolute bottom-40 right-4 z-20 w-72 max-h-[calc(100vh-14rem)] overflow-y-auto bg-card/90 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl md:right-16 animate-in slide-in-from-right-4 duration-200">
       <div
         className="flex items-center justify-between px-4 py-3 border-b border-border/40"
         style={{ borderLeftColor: groupColor, borderLeftWidth: 3 }}

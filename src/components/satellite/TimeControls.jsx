@@ -4,6 +4,27 @@ import { Play, Pause, RotateCcw, FastForward, Clock, Globe } from 'lucide-react'
 const SPEEDS = [1, 10, 60, 300];
 const SPEED_LABELS = ['1x', '10x', '1min/s', '5min/s'];
 
+function timeControlFrame(variant) {
+  switch (variant) {
+    case 'bar':
+      return {
+        obstruction: 'timebar',
+        arControl: undefined,
+        className: 'pointer-events-none absolute bottom-4 left-1/2 z-20 w-[380px] max-w-[90vw] -translate-x-1/2',
+      };
+    case 'compact':
+      return {
+        obstruction: undefined,
+        arControl: 'true',
+        className: 'pointer-events-none w-full',
+      };
+    default: {
+      const unknown = variant;
+      throw new Error(`Unknown time control variant: ${String(unknown)}`);
+    }
+  }
+}
+
 export default function TimeControls({
   simTime,
   isPlaying,
@@ -13,6 +34,7 @@ export default function TimeControls({
   onReset,
   onSpeedChange,
   onTimeScrub,
+  variant = 'bar',
 }) {
   const barRef = useRef(null);
 
@@ -34,9 +56,15 @@ export default function TimeControls({
     onTimeScrub(pct);
   };
 
+  const frame = timeControlFrame(variant);
+
   return (
-    <div data-view-obstruction="timebar" className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[380px] max-w-[90vw]">
-      <div className="bg-card/85 backdrop-blur-xl border border-border/50 rounded-xl px-4 py-3 shadow-2xl">
+    <div
+      data-view-obstruction={frame.obstruction}
+      data-ar-time-control={frame.arControl}
+      className={frame.className}
+    >
+      <div className="pointer-events-auto bg-card/85 backdrop-blur-xl border border-border/50 rounded-xl px-4 py-3 shadow-2xl">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <Clock className="w-3 h-3 text-muted-foreground" />
